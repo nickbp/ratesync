@@ -21,22 +21,22 @@
 #include <sstream>
 #include <iostream>
 
-void mpdtagger::Tagger::run() {
+void mpdtagger::Tagger::file_to_db() {
 
 	//iterate over all mpd songs, retrieve local ratings and store in map
 	std::list<mpdtagger::MpdSong> mpd_songs;
 	try {
-		MpdAccess mpd(host);//TODO cant do this, destroys mpd instance!
+		MpdAccess mpd(host);//TODO cant do this, destroys mpd conn instance!
 		mpd.songs(mpd_songs);
 	} catch (const MpdError& err) {
 		throw TaggerError(err.what());
 	}
 	
 	//retrieve all local file ratings in bulk before sending any to mpd
-	std::map<mpdtagger::MpdSong,int> file_rating_cache;
+	std::map<mpdtagger::MpdSong,int> file_ratings;
 	try{
 		MediaAccess media(dir);
-		media.ratings(mpd_songs, file_rating_cache);
+		media.ratings(mpd_songs, file_ratings);
 	} catch (const MediaError& err) {
 		throw TaggerError(err.what());
 	}
@@ -47,9 +47,9 @@ void mpdtagger::Tagger::run() {
 		 it != mpd_songs.end(); ++it) {
 		mpdtagger::MpdSong& song = *it;
 		std::map<mpdtagger::MpdSong,int>::const_iterator file_find =
-			file_rating_cache.find(song);
+			file_ratings.find(song);
 		int file_rating;
-		if (file_find == file_rating_cache.end()) {
+		if (file_find == file_ratings.end()) {
 			continue;
 		} else {
 			file_rating = file_find->second;

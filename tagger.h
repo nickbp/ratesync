@@ -37,7 +37,8 @@ namespace mpdtagger {
 		Tagger(std::string host, std::string dir)
 			: host(host), dir(dir) { }
 
-		void run();
+		//TODO want to support db->file, file->db
+		void file_to_db();
 	private:
 		std::string host, dir;
 	};

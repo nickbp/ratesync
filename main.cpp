@@ -21,12 +21,16 @@
 #include <iostream>
 
 #include "tagger.h"
+#include "config.h"
 
 void syntax(char* appname) {
+	std::cerr << "MPD Tagger v" << mpdtagger::config::version_string()
+			  << " (built " << mpdtagger::config::build_date() << ")" << std::endl;
 	std::cerr << "Syntax: " << appname << " <mpdhost> <music directory>" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
+	//TODO use getopt
 	if (argc < 3) {
 		syntax(argv[0]);
 		return 1;
@@ -44,7 +48,7 @@ int main(int argc, char* argv[]) {
 
 	try {
 		mpdtagger::Tagger tagger(host, musicdir);
-		tagger.run();
+		tagger.file_to_db();
 	} catch (const mpdtagger::TaggerError& err) {
 		std::cerr << err.what() << std::endl;
 		return 1;

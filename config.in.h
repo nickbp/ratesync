@@ -34,7 +34,7 @@ namespace mpdtagger {
 			return __TIMESTAMP__;
 		}
 
-		//TODO clean this up a bit:
+		//TODO clean this up a bit, make more like printf, convert all couts/cerrs to use these:
 
 		static bool debug_enabled = false;
 
