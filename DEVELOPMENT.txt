@@ -1,0 +1,14 @@
+What you'll need to get started (ubuntu package names):
+
+$ sudo apt-get install build-essential cmake libmpdclient-dev libtag1-dev
+
+Example initial build (after prerequisites are installed):
+
+mpdtagger$ mkdir src out
+mpdtagger$ mv * .git src
+mpdtagger$ cd out
+out$ cmake ../src
+out$ make
+out$ ./mpdtagger -h
+
+All set!
