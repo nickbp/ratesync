@@ -34,6 +34,14 @@ namespace mpdtagger {
 				fprintf(stdout, "\n");
 			}
 		}
+		void debugnn(const char* format, ...) {
+			if (debug_enabled) {
+				va_list args;
+				va_start(args, format);
+				vfprintf(stdout, format, args);
+				va_end(args);
+			}
+		}
 
 		void log(const char* format, ...) {
 			va_list args;
@@ -42,6 +50,12 @@ namespace mpdtagger {
 			va_end(args);
 			fprintf(stdout, "\n");
 		}
+		void lognn(const char* format, ...) {
+			va_list args;
+			va_start(args, format);
+			vfprintf(stdout, format, args);
+			va_end(args);
+		}
 
 		void error(const char* format, ...) {
 			va_list args;
@@ -49,6 +63,12 @@ namespace mpdtagger {
 			vfprintf(stderr, format, args);
 			va_end(args);
 			fprintf(stderr, "\n");
+		}
+		void errornn(const char* format, ...) {
+			va_list args;
+			va_start(args, format);
+			vfprintf(stderr, format, args);
+			va_end(args);
 		}
 	}
 }

@@ -32,8 +32,11 @@ namespace mpdtagger {
 		extern bool debug_enabled;
 
 		void debug(const char* format, ...);
+		void debugnn(const char* format, ...);
 		void log(const char* format, ...);
+		void lognn(const char* format, ...);
 		void error(const char* format, ...);
+		void errornn(const char* format, ...);
 	}
 }
 

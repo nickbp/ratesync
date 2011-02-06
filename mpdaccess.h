@@ -22,6 +22,8 @@
 #include <stdexcept>
 #include <string>
 #include <list>
+#include <map>
+#include <set>
 
 struct mpd_connection;
 
@@ -45,9 +47,9 @@ namespace mpdtagger {
 
 			void connect();
 
-			void songs(std::list<song_t>& out) const;
+			void ratings(std::list<song_t>& out_all,
+						 std::map<song_t,rating_t>& out_rating) const;
 
-			bool rating_get(const song_t& song, rating_t& out) const;
 			void rating_clear(const song_t& song);
 			void rating_set(const song_t& song, rating_t rating);
 		private:

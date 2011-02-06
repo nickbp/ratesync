@@ -22,21 +22,71 @@
 #include <sstream>
 #include <iostream>
 
-void mpdtagger::Tagger::file_to_db() {
+namespace {
+	using mpdtagger::mpd::song_t;
+	using mpdtagger::rating_t;
 
-	//iterate over all mpd songs, retrieve local ratings and store in map
-	std::list<mpd::song_t> mpd_songs;
+	typedef std::pair<song_t, rating_t> song_rating_t;
+	typedef std::pair<song_t, std::pair<rating_t, rating_t> > song_ratings_t;
+
+	void get_changes(const std::list<song_t>& mpd_songs,
+					 const std::map<song_t, rating_t>& mpd_ratings,
+					 const std::map<song_t, rating_t>& file_ratings,
+					 const std::set<song_t>& file_unrated,
+					 std::list<song_rating_t>& unrated_to_rating,
+					 std::list<song_rating_t>& rating_to_unrated,
+					 std::list<song_ratings_t>& rating_change) {
+		for (std::list<song_t>::const_iterator it = mpd_songs.begin();
+			 it != mpd_songs.end(); ++it) {
+			const song_t& song = *it;
+			std::map<song_t, rating_t>::const_iterator
+				mpd_rating_iter = mpd_ratings.find(song),
+				file_rating_iter = file_ratings.find(song);
+			if (file_rating_iter != file_ratings.end()) {
+				//file has a rating
+				rating_t file_rating = file_rating_iter->second;
+				if (mpd_rating_iter != mpd_ratings.end()) {
+					//mpd has a rating
+					rating_t mpd_rating = mpd_rating_iter->second;
+					if (mpd_rating != file_rating) {
+						//update mpd rating
+						rating_change.push_back(song_ratings_t(song,
+															   std::make_pair(mpd_rating,
+																			  file_rating)));
+					}
+				} else {
+					//set mpd rating
+					unrated_to_rating.push_back(song_rating_t(song,
+															  file_rating));
+				}
+			} else if (file_unrated.find(song) != file_unrated.end()) {
+				//file is unrated (or rating couldnt be parsed)
+				if (mpd_rating_iter != mpd_ratings.end()) {
+					rating_t mpd_rating = mpd_rating_iter->second;
+					//clear mpd rating
+					rating_to_unrated.push_back(song_rating_t(song,
+															  mpd_rating));
+				}
+			}
+		}		
+	}
+}
+
+bool mpdtagger::Tagger::calculate_changes() {
+
+	//get all mpd songs and their ratings:
 	mpd::Access mpd(host, port);
+	std::list<mpd::song_t> mpd_songs;
+	std::map<mpd::song_t, rating_t> mpd_ratings, file_ratings;
+	std::set<mpd::song_t> file_unrated;
 	try {
 		mpd.connect();
-		mpd.songs(mpd_songs);
+		mpd.ratings(mpd_songs, mpd_ratings);
 	} catch (const mpd::Error& err) {
 		throw TaggerError(err.what());
 	}
 	
-	//retrieve all local file ratings in bulk before sending any to mpd
-	std::map<mpd::song_t, rating_t> file_ratings;
-	std::set<mpd::song_t> file_unrated;
+	//given mpd song list, get local file metadata ratings:
 	try{
 		media::Access media(dir);
 		media.ratings(mpd_songs, file_ratings, file_unrated);
@@ -44,40 +94,115 @@ void mpdtagger::Tagger::file_to_db() {
 		throw TaggerError(err.what());
 	}
 
-	//iterate over file rating cache, update ratings at server as needed
-	//(only files found in the specified directory are updated)
-	for (std::list<mpd::song_t>::iterator it = mpd_songs.begin();
-		 it != mpd_songs.end(); ++it) {
-		mpd::song_t& song = *it;
-		std::map<mpd::song_t, rating_t>::const_iterator file_rating_iter =
-			file_ratings.find(song);
-		rating_t mpd_rating;
-		bool mpd_has_rating = mpd.rating_get(song, mpd_rating);
-		if (file_rating_iter != file_ratings.end()) {
-			//file has a rating
-			rating_t file_rating = file_rating_iter->second;
-			if (!mpd_has_rating) {
-				//set rating value
-				config::debug("SET %s: UNRATED -> %d",
-							  song.c_str(), file_rating);
-				mpd.rating_set(song, file_rating);
-			} else if (mpd_rating != file_rating) {
-				//set rating value
-				config::debug("SET %s: %d -> %d",
-							  song.c_str(), mpd_rating, file_rating);
-				mpd.rating_set(song, file_rating);
-			} else {
-				config::debug("MATCH %s = %d", song.c_str(), mpd_rating);
-			}
-		} else if (file_unrated.find(song) != file_unrated.end()) {
-			//file is unrated (or rating couldnt be parsed)
-			if (mpd_has_rating) {
-				//clear mpd rating
-				config::debug("CLEAR %s", song.c_str());
-				mpd.rating_clear(song);
-			} else {
-				config::debug("MATCH %s = UNRATED", song.c_str());
-			}
+	//get list of files whose ratings differ:
+	get_changes(mpd_songs, mpd_ratings, file_ratings, file_unrated,
+				unrated_to_rating, rating_to_unrated, rating_change);
+
+	return (!unrated_to_rating.empty() ||
+			!rating_to_unrated.empty() ||
+			!rating_change.empty());
+}
+
+void mpdtagger::Tagger::print_changes() const {
+	bool printed = false;
+	if (!unrated_to_rating.empty()) {
+		printed = true;
+		config::log("%d files unrated in MPD, rated on disk",
+					unrated_to_rating.size());
+		int i = 0;
+		for (std::list<song_rating_t>::const_iterator iter
+				 = unrated_to_rating.begin();
+			 iter != unrated_to_rating.end(); iter++) {
+			config::log("  %d/%d %s: unrated -> %d",
+						i++, unrated_to_rating.size(),
+						iter->first.c_str(), iter->second);
 		}
+	}
+
+	if (!rating_to_unrated.empty()) {
+		if (printed) {
+			config::log("");
+		}
+		printed = true;
+		config::log("%d files rated in MPD, unrated on disk",
+					rating_to_unrated.size());
+		int i = 0;
+		for (std::list<song_rating_t>::const_iterator iter
+				 = rating_to_unrated.begin();
+			 iter != rating_to_unrated.end(); iter++) {
+			config::log("  %d/%d %s: %d -> unrated",
+						i++, rating_to_unrated.size(),
+						iter->first.c_str(), iter->second);
+		}
+	}
+
+	if (!rating_change.empty()) {
+		if (printed) {
+			config::log("");
+		}
+		printed = true;
+		config::log("%d files rated in MPD, rated differently on disk",
+					rating_change.size());
+		int i = 0;
+		for (std::list<song_ratings_t>::const_iterator iter
+				 = rating_change.begin();
+			 iter != rating_change.end(); iter++) {
+			config::log("  %d/%d %s: %d -> %d",
+						i++, rating_change.size(),
+						iter->first.c_str(),
+						iter->second.first, iter->second.second);
+		}
+	}
+
+	if (!printed) {
+		config::log("No changes to be made.");
+	} else {
+		config::log("");
+		config::log("%d total changes to be made in MPD.",
+					unrated_to_rating.size() + rating_to_unrated.size() +
+					rating_change.size());
+	}
+}
+
+void mpdtagger::Tagger::apply_changes() {
+	mpd::Access mpd(host, port);
+	try {
+		mpd.connect();
+	} catch (const mpd::Error& err) {
+		throw TaggerError(err.what());
+	}
+
+	for (std::list<song_rating_t>::const_iterator iter = unrated_to_rating.begin();
+		 iter != unrated_to_rating.end(); iter++) {
+		try {
+			mpd.rating_set(iter->first, iter->second);
+		} catch (const mpd::Error& err) {
+			throw TaggerError(err.what());
+		}
+		config::debug("SET %s: UNRATED -> %d",
+					  iter->first.c_str(), iter->second);
+	}
+
+	for (std::list<song_rating_t>::const_iterator iter = rating_to_unrated.begin();
+		 iter != rating_to_unrated.end(); iter++) {
+		try {
+			mpd.rating_clear(iter->first);
+		} catch (const mpd::Error& err) {
+			throw TaggerError(err.what());
+		}
+		config::debug("SET %s: %d -> UNRATED",
+					  iter->first.c_str(), iter->second);
+	}
+
+	for (std::list<song_ratings_t>::const_iterator iter = rating_change.begin();
+		 iter != rating_change.end(); iter++) {
+		try {
+			mpd.rating_set(iter->first, iter->second.second);
+		} catch (const mpd::Error& err) {
+			throw TaggerError(err.what());
+		}
+		config::debug("SET %s: %d -> %d",
+					  iter->first.c_str(),
+					  iter->second.first, iter->second.second);
 	}
 }

@@ -23,6 +23,39 @@
 
 namespace {
 	static const char* RATING_STICKER = "rating";
+
+	bool rating_get(struct mpd_connection* conn,
+					const mpdtagger::mpd::song_t& song,
+					mpdtagger::rating_t& out) {
+		struct mpd_pair* mpd_rating_pair;
+		if (mpd_send_sticker_get(conn, "song", song.c_str(), RATING_STICKER) &&
+			(mpd_rating_pair = mpd_recv_sticker(conn)) != NULL) {
+			//extract rating (1-5) from sticker
+			if (!mpd_response_finish(conn)) {
+				throw mpdtagger::mpd::Error("Exception when closing sticker query");
+			}
+			mpdtagger::rating_t mpd_rating;
+			std::istringstream mpd_rating_stream(mpd_rating_pair->value);
+			mpd_rating_stream >> mpd_rating;
+			if (mpd_rating_stream.fail() || mpd_rating < 1 || mpd_rating > 5) {
+				std::ostringstream oss;
+				oss << "Mpd Song '" << song << "' : Unknown rating value '"
+					<< mpd_rating_pair->value << "'";
+				mpd_return_sticker(conn,mpd_rating_pair);
+				throw mpdtagger::mpd::Error(oss.str());
+			}
+			mpd_return_sticker(conn,mpd_rating_pair);
+			out = mpd_rating;
+			return true;
+		} else {
+			//requested sticker is unset. clear error state and continue
+			if (!mpd_connection_clear_error(conn)) {
+				//it was a fatal error (not just unset sticker), abort
+				throw mpdtagger::mpd::Error("Exception when getting sticker");
+			}
+			return false;
+		}
+	}
 }
 
 mpdtagger::mpd::Access::Access(const std::string& host, size_t port)
@@ -46,7 +79,8 @@ void mpdtagger::mpd::Access::connect() {
 	}
 }
 
-void mpdtagger::mpd::Access::songs(std::list<song_t>& out) const {
+void mpdtagger::mpd::Access::ratings(std::list<song_t>& out_all,
+									 std::map<song_t,rating_t>& out_rating) const {
 	if (conn == NULL) {
 		throw Error("INTERNAL ERROR: called songs() before connect()");
 	}
@@ -60,43 +94,17 @@ void mpdtagger::mpd::Access::songs(std::list<song_t>& out) const {
 
 	struct mpd_song* song = NULL;
 	while ((song = mpd_recv_song(conn)) != NULL) {
-		out.push_back(mpd_song_get_uri(song));
+		out_all.push_back(mpd_song_get_uri(song));
 		mpd_song_free(song);
 	}
-}
 
-bool mpdtagger::mpd::Access::rating_get(const song_t& song, rating_t& out) const {
-	if (conn == NULL) {
-		throw Error("INTERNAL ERROR: called rating() before connect()");
-	}
-
-	struct mpd_pair* mpd_rating_pair;
-	if (mpd_send_sticker_get(conn, "song", song.c_str(), RATING_STICKER) &&
-		(mpd_rating_pair = mpd_recv_sticker(conn)) != NULL) {
-		//extract rating (1-5) from sticker
-		if (!mpd_response_finish(conn)) {
-			throw Error("Exception when closing sticker query");
+	rating_t r;
+	for (std::list<song_t>::const_iterator iter = out_all.begin();
+		 iter != out_all.end(); iter++) {
+		const song_t& song = *iter;
+		if (rating_get(conn, song, r)) {
+			out_rating.insert(std::make_pair(song,r));
 		}
-		rating_t mpd_rating;
-		std::istringstream mpd_rating_stream(mpd_rating_pair->value);
-		mpd_rating_stream >> mpd_rating;
-		if (mpd_rating_stream.fail() || mpd_rating < 1 || mpd_rating > 5) {
-			std::ostringstream oss;
-			oss << "Mpd Song '" << song << "' : Unknown rating value '"
-				<< mpd_rating_pair->value << "'";
-			mpd_return_sticker(conn,mpd_rating_pair);
-			throw Error(oss.str());
-		}
-		mpd_return_sticker(conn,mpd_rating_pair);
-		out = mpd_rating;
-		return true;
-	} else {
-		//requested sticker is unset. clear error state and continue
-		if (!mpd_connection_clear_error(conn)) {
-			//it was a fatal error (not just unset sticker), abort
-			throw Error("Exception when getting sticker");
-		}
-		return false;
 	}
 }
 

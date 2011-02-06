@@ -34,13 +34,24 @@ namespace mpdtagger {
 
 	class Tagger {
 	public:
-	Tagger(std::string host, size_t port, std::string dir)
-		: host(host), dir(dir), port(port) { }
+	Tagger(std::string mpd_host, size_t mpd_port,
+		   std::string music_dir)
+		: dir(music_dir), host(mpd_host), port(mpd_port) { }
 
-		void file_to_db();
+		bool calculate_changes();
+		void print_changes() const;
+		void apply_changes();
+
 	private:
-		std::string host, dir;
-		size_t port;
+		const std::string dir, host;
+		const size_t port;
+
+		typedef std::pair<mpd::song_t, rating_t> song_rating_t;
+		typedef std::pair<mpd::song_t, std::pair<rating_t, rating_t> > song_ratings_t;
+
+		std::list<song_rating_t> unrated_to_rating;
+		std::list<song_rating_t> rating_to_unrated;
+		std::list<song_ratings_t> rating_change;
 	};
 }
 

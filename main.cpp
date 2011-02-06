@@ -46,7 +46,7 @@ void syntax(char* appname) {
 		  mpdtagger::config::BUILD_DATE);
 	error("Usage: %s [options] <command> <musicdir>", appname);
 	error("Commands:");
-	error("  tag   Store song rating metadata in mpd tag database.");
+	error("  tag   Store song rating metadata into mpd tag database.");
 	error("  move  Sort files into numbered directories according to their ratings.");
 	error("");
 	error("Common Options:");
@@ -198,6 +198,14 @@ bool parse_config(int argc, char* argv[]) {
 	return true;
 }
 
+bool promptYN(const std::string& question) {
+	mpdtagger::config::lognn("%s (y/N): ", question.c_str());
+	std::string response;
+	std::getline(std::cin, response);
+	return (!response.empty() &&
+			(response[0] == 'y' || response[0] == 'Y'));
+}
+
 int main(int argc, char* argv[]) {
 	if (!parse_config(argc, argv)) {
 		return 1;
@@ -209,7 +217,16 @@ int main(int argc, char* argv[]) {
 	} else if (tag_cmd) {
 		try {
 			mpdtagger::Tagger tagger(mpd_host, mpd_port, music_dir);
-			tagger.file_to_db();
+			log("Calculating changes...");
+			if (tagger.calculate_changes()) {
+				log("The following changes are about to be applied to your MPD database:");
+				tagger.print_changes();
+				if (promptYN("Continue with these changes to your MPD database?")) {
+					tagger.apply_changes();
+				}
+			} else {
+				log("Your MPD database is up to date.");
+			}
 		} catch (const mpdtagger::TaggerError& err) {
 			error(err.what());
 			return 1;
