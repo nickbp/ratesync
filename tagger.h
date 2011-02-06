@@ -34,13 +34,13 @@ namespace mpdtagger {
 
 	class Tagger {
 	public:
-		Tagger(std::string host, std::string dir)
-			: host(host), dir(dir) { }
+	Tagger(std::string host, size_t port, std::string dir)
+		: host(host), dir(dir), port(port) { }
 
-		//TODO want to support db->file, file->db
 		void file_to_db();
 	private:
 		std::string host, dir;
+		size_t port;
 	};
 }
 

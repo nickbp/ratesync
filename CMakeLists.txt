@@ -8,6 +8,7 @@ set (mpdtagger_VERSION_PATCH 0)
 
 SET(SRCS
   config.in.h
+  config.cpp
   main.cpp
   mediaaccess.h
   mediaaccess.cpp

@@ -17,6 +17,7 @@
 */
 
 #include "tagger.h"
+#include "config.h"
 
 #include <sstream>
 #include <iostream>
@@ -24,53 +25,58 @@
 void mpdtagger::Tagger::file_to_db() {
 
 	//iterate over all mpd songs, retrieve local ratings and store in map
-	std::list<mpdtagger::MpdSong> mpd_songs;
+	std::list<mpdtagger::mpd::Song> mpd_songs;
 	try {
-		MpdAccess mpd(host);//TODO cant do this, destroys mpd conn instance!
+		mpd::Access mpd(host, port);//TODO cant do this, destroys mpd conn instance!
 		mpd.songs(mpd_songs);
-	} catch (const MpdError& err) {
+	} catch (const mpd::Error& err) {
 		throw TaggerError(err.what());
 	}
 	
 	//retrieve all local file ratings in bulk before sending any to mpd
-	std::map<mpdtagger::MpdSong,int> file_ratings;
+	std::map<mpd::Song, rating_t> file_ratings;
+	std::set<mpd::Song> file_unrated;
 	try{
-		MediaAccess media(dir);
-		media.ratings(mpd_songs, file_ratings);
-	} catch (const MediaError& err) {
+		media::Access media(dir);
+		media.ratings(mpd_songs, file_ratings, file_unrated);
+	} catch (const media::Error& err) {
 		throw TaggerError(err.what());
 	}
 
 	//iterate over file rating cache, update ratings at server as needed
 	//(only files found in the specified directory are updated)
-	for (std::list<mpdtagger::MpdSong>::iterator it = mpd_songs.begin();
+	for (std::list<mpd::Song>::iterator it = mpd_songs.begin();
 		 it != mpd_songs.end(); ++it) {
-		mpdtagger::MpdSong& song = *it;
-		std::map<mpdtagger::MpdSong,int>::const_iterator file_find =
+		mpd::Song& song = *it;
+		std::map<mpd::Song, rating_t>::const_iterator file_rating_iter =
 			file_ratings.find(song);
-		int file_rating;
-		if (file_find == file_ratings.end()) {
-			continue;
-		} else {
-			file_rating = file_find->second;
-		}
-
-		int mpd_rating = song.rating();
-
-		if (mpd_rating != file_rating) {
-			//update mpd rating:
-			if (file_rating == mpdtagger::MpdAccess::UNRATED) {
+		rating_t mpd_rating;
+		bool mpd_has_rating = song.rating(mpd_rating);
+		if (file_rating_iter != file_ratings.end()) {
+			//file has a rating
+			rating_t file_rating = file_rating_iter->second;
+			if (!mpd_has_rating) {
+				//set rating value
+				config::debug("SET %s: UNRATED -> %d",
+							  song.uri().c_str(), file_rating);
+				song.rating_set(file_rating);
+			} else if (mpd_rating != file_rating) {
+				//set rating value
+				config::debug("SET %s: %d -> %d",
+							  song.uri().c_str(), mpd_rating, file_rating);
+				song.rating_set(file_rating);
+			} else {
+				config::debug("MATCH %s = %d", song.uri().c_str(), mpd_rating);
+			}
+		} else if (file_unrated.find(song) != file_unrated.end()) {
+			//file is unrated (or rating couldnt be parsed)
+			if (mpd_has_rating) {
 				//clear mpd rating
-				std::cout << "CLEAR " << song.uri() << std::endl;
+				config::debug("CLEAR %s", song.uri().c_str());
 				song.rating_clear();
 			} else {
-				//set rating value
-				std::cout << "SET " << song.uri() << ": "
-						  << mpd_rating << "->" << file_rating << std::endl;
-				song.rating_set(file_rating);
+				config::debug("MATCH %s = UNRATED", song.uri().c_str());
 			}
-		} else {
-			std::cout << "MATCH " << song.uri() << " = " << mpd_rating << std::endl;
 		}
 	}
 }

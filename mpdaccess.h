@@ -26,46 +26,49 @@
 #include <mpd/client.h>
 
 namespace mpdtagger {
-	class MpdError : public std::runtime_error {
-	public:
-	MpdError(const std::string& what) :
-		std::runtime_error(what) { }
-	};
 
-	class MpdSong {
-	public:
-	MpdSong(struct mpd_connection* conn, const std::string& uri)
-		: conn(conn), uri_(uri) { };
+	typedef size_t rating_t;
 
-		const std::string& uri() const;
-		unsigned int rating() const;
+	namespace mpd {
+		class Error : public std::runtime_error {
+		public:
+		Error(const std::string& what) :
+			std::runtime_error(what) { }
+		};
 
-		void rating_clear();
-		void rating_set(unsigned int rating);
+		class Song {
+		public:
+		Song(struct mpd_connection* conn, const std::string& uri)
+			: conn(conn), uri_(uri) { };
 
-		bool operator==(const MpdSong& s) const {
-			return uri() == s.uri();
-		}
-		bool operator<(const MpdSong& s) const {
-			return uri() < s.uri();
-		}
-	private:
-		struct mpd_connection* conn;
-		const std::string uri_;
-	};
+			const std::string& uri() const;
+			bool rating(rating_t& out) const;
 
-	class MpdAccess {
-	public:
-		static const int UNRATED = 0;//TODO replace with obj
+			void rating_clear();
+			void rating_set(rating_t rating);
 
-		MpdAccess(const std::string& host);
-		virtual ~MpdAccess();
+			bool operator==(const Song& s) const {
+				return uri() == s.uri();
+			}
+			bool operator<(const Song& s) const {
+				return uri() < s.uri();
+			}
+		private:
+			struct mpd_connection* conn;
+			const std::string uri_;
+		};
 
-		void songs(std::list<MpdSong>& out) const;
-	private:
-		const std::string host;
-		struct mpd_connection* conn;
-	};
+		class Access {
+		public:
+			Access(const std::string& host, size_t port);
+			virtual ~Access();
+
+			void songs(std::list<Song>& out) const;
+		private:
+			const std::string host;
+			struct mpd_connection* conn;
+		};
+	}
 }
 
 #endif

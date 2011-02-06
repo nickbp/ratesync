@@ -24,37 +24,39 @@
 #include <stdexcept>
 #include <string>
 #include <map>
+#include <set>
 
-namespace mpdtagger { 
-	class MediaError : public std::runtime_error {
-	public:
-	MediaError(const std::string& what) :
-		std::runtime_error(what) { }
-	};
+namespace mpdtagger {
+	namespace media {
+		class Error : public std::runtime_error {
+		public:
+		Error(const std::string& what) :
+			std::runtime_error(what) { }
+		};
 
-	class MediaFile {
-	public:
-	MediaFile(const std::string& path)
-		: path(path) { }
+		class File {
+		public:
+		File(const std::string& path)
+			: path(path) { }
 
-		unsigned int rating();
-	private:
-		const std::string path;
-	};
+			bool rating(rating_t& out);
+		private:
+			const std::string path;
+		};
 
-	class MediaAccess {
-	public:
-		static const int UNRATED = 0;//TODO replace with obj
-		
-		MediaAccess(const std::string& dir);
+		class Access {
+		public:
+			Access(const std::string& dir);
 
-		void ratings(const std::list<MpdSong>& mpd_songs,
-					 std::map<MpdSong,int>& out);
-	private:
-		bool check_file(const std::string& filepath, bool isdir, bool throw_err = false);
+			void ratings(const std::list<mpd::Song>& mpd_songs,
+						 std::map<mpd::Song,rating_t>& out_rating,
+						 std::set<mpd::Song>& out_unrated);
+		private:
+			bool check_file(const std::string& filepath, bool isdir, bool throw_err = false);
 
-		const std::string dir;
-	};
+			const std::string dir;
+		};
+	}
 }
 
 #endif

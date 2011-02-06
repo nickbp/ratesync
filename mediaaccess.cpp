@@ -17,6 +17,7 @@
 */
 
 #include "mediaaccess.h"
+#include "config.h"
 
 #include <taglib/taglib.h>
 #include <taglib/fileref.h>
@@ -60,7 +61,8 @@ namespace {
 		return ending.compare(needle) == 0;
 	}
 
-	unsigned int xiph_rating(TagLib::Ogg::XiphComment* xiphcomment) {
+	bool xiph_rating(TagLib::Ogg::XiphComment* xiphcomment,
+					 mpdtagger::rating_t& out) {
 		TagLib::Ogg::FieldListMap map = xiphcomment->fieldListMap();
 		for (TagLib::Ogg::FieldListMap::Iterator it = map.begin();
 			 it != map.end(); ++it) {
@@ -76,25 +78,28 @@ namespace {
 					if (stream.fail()) {
 						continue;
 					}
-					if (ogg_rating == 0.5)//unrated
-						return mpdtagger::MediaAccess::UNRATED;
-					else if (ogg_rating > 0.8)// (0.8,1.0]
-						return 5;
-					else if (ogg_rating > 0.6)// (0.6,0.8]
-						return 4;
-					else if (ogg_rating > 0.4)// (0.4,0.6]
-						return 3;
-					else if (ogg_rating > 0.2)// (0.2,0.4]
-						return 2;
-					else // [0.0,0.2]
-						return 1;
+					if (ogg_rating == 0.5) {//unrated
+						return false;
+					} else if (ogg_rating > 0.8) {// (0.8,1.0]
+						out = 5;
+					} else if (ogg_rating > 0.6) {// (0.6,0.8]
+						out = 4;
+					} else if (ogg_rating > 0.4) {// (0.4,0.6]
+						out = 3;
+					} else if (ogg_rating > 0.2) {// (0.2,0.4]
+						out = 2;
+					} else {// [0.0,0.2]
+						out = 1;
+					}
+					return true;
 				}
 			}
 		}
-		return mpdtagger::MediaAccess::UNRATED;
+		return false;
 	}
 
-	unsigned int id3v2_rating(TagLib::ID3v2::Tag* id3v2tag) {
+	bool id3v2_rating(TagLib::ID3v2::Tag* id3v2tag,
+					  mpdtagger::rating_t& out) {
 		const TagLib::ID3v2::FrameListMap& map = id3v2tag->frameListMap();
 		if (map.contains("POPM")) {
 			const TagLib::List<TagLib::ID3v2::Frame*>& vallist = map["POPM"];
@@ -103,103 +108,102 @@ namespace {
 				TagLib::ID3v2::PopularimeterFrame* popmframe =
 					static_cast<TagLib::ID3v2::PopularimeterFrame*>(*frame);
 				int popm_rating = popmframe->rating();
-				if (popm_rating == 0)
-					return mpdtagger::MediaAccess::UNRATED;
-				else if (popm_rating < 64)
-					return 1;
-				else if (popm_rating < 128)
-					return 2;
-				else if (popm_rating < 192)
-					return 3;
-				else if (popm_rating < 255)
-					return 4;
-				return 5;
+				if (popm_rating == 0) {
+					return false;
+				} else if (popm_rating < 64) {
+					out = 1;
+				} else if (popm_rating < 128) {
+					out = 2;
+				} else if (popm_rating < 192) {
+					out = 3;
+				} else if (popm_rating < 255) {
+					out = 4;
+				} else {
+					out = 5;
+				}
+				return true;
 			}
 		}
-		return mpdtagger::MediaAccess::UNRATED;
+		return false;
 	}
 
 }
 
-unsigned int mpdtagger::MediaFile::rating() {
+bool mpdtagger::media::File::rating(rating_t& out) {
 	const char* songpath_s = path.c_str();
-	int file_rating = -1;
-
 	//TODO determine tag type properly by checking null tag (dont depend on filename)
 	if (string_ends_with(path,".ogg")) {
 		TagLib::Ogg::Vorbis::File oggfile(songpath_s);
 		TagLib::Ogg::XiphComment* xiphcomment = oggfile.tag();
 		if (xiphcomment) {
-			file_rating = xiph_rating(xiphcomment);
+			return xiph_rating(xiphcomment, out);
 		}
 	} else if (string_ends_with(path,".flac")) {
 		TagLib::FLAC::File flacfile(songpath_s);
 		TagLib::Ogg::XiphComment* xiphcomment = flacfile.xiphComment();
 		if (xiphcomment) {
-			file_rating = xiph_rating(xiphcomment);
+			return xiph_rating(xiphcomment, out);
 		}
 	} else if (string_ends_with(path,".mp3")) {
 		TagLib::MPEG::File mpegfile(songpath_s);
 		TagLib::ID3v2::Tag* id3v2tag = mpegfile.ID3v2Tag();
 		if (id3v2tag) {
-			file_rating = id3v2_rating(id3v2tag);
+			return id3v2_rating(id3v2tag, out);
 		}
 	}
-	if (file_rating < 0) {
-		std::ostringstream oss;
-		oss << "Unknown file type: " << path;
-		throw MediaError(oss.str());
-	}
-
-	return file_rating;
+	return false;
 }
 
-mpdtagger::MediaAccess::MediaAccess(const std::string& dir) : dir(dir) {
+mpdtagger::media::Access::Access(const std::string& dir) : dir(dir) {
 	check_file(dir, true, true);
 }
 
-void mpdtagger::MediaAccess::ratings(const std::list<MpdSong>& mpd_songs,
-									 std::map<MpdSong,int>& out) {
-	for (std::list<mpdtagger::MpdSong>::const_iterator it = mpd_songs.begin();
+void mpdtagger::media::Access::ratings(const std::list<mpd::Song>& mpd_songs,
+									   std::map<mpd::Song,rating_t>& out_ratings,
+									   std::set<mpd::Song>& out_unrated) {
+	for (std::list<mpd::Song>::const_iterator it = mpd_songs.begin();
 		 it != mpd_songs.end(); it++) {
 		std::string songpath(dir+it->uri());
 		check_file(songpath, false, true);
 
 		try {
-			mpdtagger::MediaFile media(songpath);
-			int file_rating = media.rating();
-			if (file_rating >= 0) {
-				std::cout << "READFILE " << it->uri() << " = " << file_rating << std::endl;
-				out.insert(std::make_pair(*it,file_rating));
+			File media(songpath);
+			rating_t r;
+			if (media.rating(r)) {
+				config::debug("RATING %s = %d", it->uri().c_str(), r);
+				out_ratings.insert(std::make_pair(*it,r));
+			} else {
+				config::debug("RATING %s = UNRATED", it->uri().c_str(), r);
+				out_unrated.insert(*it);
 			}
 		} catch (...) {
-			std::cerr << "Unsupported file: " << songpath << std::endl;
+			config::log("Unsupported file: ", songpath.c_str());
 		}
 	}
 }
 
-bool mpdtagger::MediaAccess::check_file(const std::string& filepath,
+bool mpdtagger::media::Access::check_file(const std::string& filepath,
 										bool isdir, bool throw_err/*=false*/) {
 	struct stat sb;
 	if (stat(filepath.c_str(), &sb) == -1) {
 		if (throw_err) {
 			std::ostringstream oss;
 			oss << "File not found: " << filepath;
-			throw MediaError(oss.str());
+			throw Error(oss.str());
 		}
 		return false;
 	} else if (isdir && !S_ISDIR(sb.st_mode)) {
 		if (throw_err) {
 			std::ostringstream oss;
 			oss << "Not a directory: " << filepath;
-			throw MediaError(oss.str());
+			throw Error(oss.str());
 		}
 		return false;
 	} else if (!isdir && !S_ISREG(sb.st_mode)) {
 		if (throw_err) {
 			std::ostringstream oss;
 			oss << "Not a regular file: " << filepath;
-			throw MediaError(oss.str());
+			throw Error(oss.str());
 		}
 		return false;
 	}
