@@ -6,9 +6,11 @@ Example initial build (after prerequisites are installed):
 
 mpdtagger$ mkdir src out
 mpdtagger$ mv * .git src
+(you should now have two subdirectories: src/ and out/)
 mpdtagger$ cd out
-out$ cmake ../src
-out$ make
-out$ ./mpdtagger -h
+mpdtagger/out$ cmake ../src
+(this generates makefiles -- cmake may also be used for configuring build parameters (optional))
+mpdtagger/out$ make
+mpdtagger/out$ ./mpdtagger -h
 
 All set!

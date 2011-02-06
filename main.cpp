@@ -22,6 +22,7 @@
 
 #include <getopt.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "tagger.h"
 #include "config.h"
@@ -34,33 +35,51 @@ using mpdtagger::config::debug;
 #define DEFAULT_MPD_PORT 6600
 
 namespace {
-	bool move_cmd = false, tag_cmd = false, output_copy = false;
-	std::string music_dir, mpd_host = DEFAULT_MPD_HOST, output_dir;
+	bool help_cmd = false, move_cmd = false, tag_cmd = false, output_copy = false;
+	std::string mpd_host = DEFAULT_MPD_HOST, music_dir, output_dir;
 	size_t mpd_port = DEFAULT_MPD_PORT;
 }
-
 
 void syntax(char* appname) {
 	error("MPD Tagger v%s (built %s)",
 		  mpdtagger::config::VERSION_STRING,
 		  mpdtagger::config::BUILD_DATE);
-	error("Usage: %s [options] <command>", appname);
+	error("Usage: %s [options] <command> <musicdir>", appname);
 	error("Commands:");
-	error("  tag   Apply song rating metadata to mpd tag database");
-	error("  move  Move files on filesystem according to song rating metadata");
+	error("  tag   Store song rating metadata in mpd tag database.");
+	error("  move  Sort files into numbered directories according to their ratings.");
 	error("");
 	error("Common Options:");
-	error("  -h/--help              This help text");
-	error("  -v/--verbose           Show verbose output");
-	error("  -d/--music-dir <path>  Path to music directory");
+	error("  -h/--help     This help text.");
+	error("  -v/--verbose  Show verbose output.");
 	error("");
 	error("Tag Options:");
-	error("  -m/--mpd-host <host[:port]>  MPD host/port (default %s:%d)",
+	error("  -m/--mpd-host <host[:port]>  MPD host/port. (default %s:%d)",
 		  DEFAULT_MPD_HOST, DEFAULT_MPD_PORT);
 	error("");
 	error("Move Options:");
-	error("  -c/--output-copy        Copy files rather than moving them");
-	error("  -o/--output-dir <path>  Where to move/copy sorted files");
+	error("  -o/--output-dir <path>  Where to move/copy sorted files. Required.");
+	error("  -c/--output-copy        Copy files instead of moving them.");
+}
+
+bool check_dir(const char* dirpath, bool check_write = false) {
+	struct stat dirstat;
+	if (stat(dirpath, &dirstat) != 0) {
+		error("Unable to get status for directory '%s'", dirpath);
+		return false;
+	}
+	if (!S_ISDIR(dirstat.st_mode)) {
+		error("'%s' is not a directory.", dirpath);
+		return false;
+	}
+	if (check_write && access(dirpath, X_OK | W_OK) != 0) {
+		error("Directory '%s' does not allow write+execute access.", dirpath);
+		return false;
+	} else if (access(dirpath, X_OK | R_OK) != 0) {
+		error("Directory '%s' does not allow read+execute access.", dirpath);
+		return false;
+	}
+	return true;
 }
 
 bool parse_config(int argc, char* argv[]) {
@@ -73,53 +92,54 @@ bool parse_config(int argc, char* argv[]) {
 		static struct option long_options[] = {
 			{"help", 0, NULL, 'h'},
 			{"verbose", 0, NULL, 'v'},
-			{"music-dir", 1, NULL, 'd'},
 			{"mpd-host", 1, NULL, 'm'},
 			{"output-dir", 1, NULL, 'o'},
 			{"output-copy", 0, NULL, 'c'},
 			{0,0,0,0}
 		};
 
-		c = getopt_long(argc, argv, "hvd:m:o:c",
+		c = getopt_long(argc, argv, "hvm:o:c",
 						long_options, NULL);
 		if (c == -1) {//unknown arg (doesnt match -x/--x format)
 			if (optind >= argc) {
 				//at end of successful parse
 				break;
 			}
-			const char* arg = argv[optind];
-			bool valid_command = false,
-				at_end = (optind == argc-1);
-			if (strcmp(arg, "tag") == 0) {
-				tag_cmd = true;
-				valid_command = true;
-			} else if (strcmp(arg, "move") == 0) {
-				move_cmd = true;
-				valid_command = true;
-			}
-			if (valid_command && !at_end) {
-				//complain that the command wasn't the last word
-				error("%s: '%s' command must be the last argument", argv[0], arg);
-				syntax(argv[0]);
-				return false;
-			} else if (!valid_command) {
-				//complain (same format as getopt_long)
-				error("%s: unrecognized option '%s'", argv[0], arg);
-				syntax(argv[0]);
-				return false;
+			//getopt refuses to continue, so handle command / musicdir manually:
+			for (int i = optind; i < argc; ++i) {
+				const char* arg = argv[i];
+				debug("%d %d %s", argc, i, arg);
+				if (!tag_cmd && !move_cmd) {
+					if (strcmp(arg, "tag") == 0) {
+						tag_cmd = true;
+					} else if (strcmp(arg, "move") == 0) {
+						move_cmd = true;
+					} else {
+						error("%s: unknown argument: '%s'", argv[0], argv[i]);
+						syntax(argv[0]);
+						return false;
+					}
+				} else {
+					if (music_dir.length() > 0) {
+						error("%s: unknown argument: '%s'", argv[0], argv[i]);
+						syntax(argv[0]);
+						return false;
+					}
+					if (!check_dir(arg)) {
+						return false;
+					}
+					music_dir = std::string(arg);
+				}
 			}
 			break;
 		}
 
 		switch (c) {
 		case 'h':
-			syntax(argv[0]);
-			return 0;
+			help_cmd = true;
+			return true;
 		case 'v':
 			mpdtagger::config::debug_enabled = true;
-			break;
-		case 'd':
-			music_dir = std::string(optarg);
 			break;
 		case 'm':
 			{
@@ -140,6 +160,9 @@ bool parse_config(int argc, char* argv[]) {
 			}
 			break;
 		case 'o':
+			if (!check_dir(optarg, true)) {
+				return false;
+			}
 			output_dir = std::string(optarg);
 			break;
 		case 'c':
@@ -156,6 +179,11 @@ bool parse_config(int argc, char* argv[]) {
 		syntax(argv[0]);
 		return false;
 	}
+	if (music_dir.length() == 0) {
+		error("%s: no music directory specified", argv[0]);
+		syntax(argv[0]);
+		return false;
+	}
 
 	debug("common opts:");
 	debug("  music-dir: %s", music_dir.c_str());
@@ -168,20 +196,15 @@ bool parse_config(int argc, char* argv[]) {
 	return true;
 }
 
-bool check_dir(std::string& dirpath) {
-	//TODO use this (and also check that paths exist)
-	if (dirpath.length() > 0 &&
-		dirpath[dirpath.length()-1] != '/') {
-		dirpath += "/";
-	}
-}
-
 int main(int argc, char* argv[]) {
 	if (!parse_config(argc, argv)) {
 		return 1;
 	}
 
-	if (tag_cmd) {
+	if (help_cmd) {
+		syntax(argv[0]);
+		return 0;
+	} else if (tag_cmd) {
 		try {
 			mpdtagger::Tagger tagger(mpd_host, mpd_port, music_dir);
 			tagger.file_to_db();
@@ -190,12 +213,12 @@ int main(int argc, char* argv[]) {
 			return 1;
 		}
 	} else if (move_cmd) {
-		error("file move support WIP");
+		if (output_dir.length() == 0) {
+			error("%s: output directory required for move command", argv[0]);
+			return 1;
+		}
+		log("file move support WIP");
 		//output_copy, output_dir
-		return 1;
-	} else {
-		error("computer???");
-		return 1;
 	}
 	return 0;
 }
