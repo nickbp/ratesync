@@ -46,15 +46,13 @@ namespace mpdtagger {
 
 		class Access {
 		public:
-			Access(const std::string& dir);
+			Access(const std::string& music_dir);
 
-			void ratings(const std::list<mpd::Song>& mpd_songs,
-						 std::map<mpd::Song,rating_t>& out_rating,
-						 std::set<mpd::Song>& out_unrated);
+			void ratings(const std::list<mpd::song_t>& mpd_songs,
+						 std::map<mpd::song_t,rating_t>& out_rating,
+						 std::set<mpd::song_t>& out_unrated);
 		private:
-			bool check_file(const std::string& filepath, bool isdir, bool throw_err = false);
-
-			const std::string dir;
+			const std::string music_dir;
 		};
 	}
 }

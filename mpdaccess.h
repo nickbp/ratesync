@@ -23,7 +23,7 @@
 #include <string>
 #include <list>
 
-#include <mpd/client.h>
+struct mpd_connection;
 
 namespace mpdtagger {
 
@@ -36,36 +36,23 @@ namespace mpdtagger {
 			std::runtime_error(what) { }
 		};
 
-		class Song {
-		public:
-		Song(struct mpd_connection* conn, const std::string& uri)
-			: conn(conn), uri_(uri) { };
-
-			const std::string& uri() const;
-			bool rating(rating_t& out) const;
-
-			void rating_clear();
-			void rating_set(rating_t rating);
-
-			bool operator==(const Song& s) const {
-				return uri() == s.uri();
-			}
-			bool operator<(const Song& s) const {
-				return uri() < s.uri();
-			}
-		private:
-			struct mpd_connection* conn;
-			const std::string uri_;
-		};
+		typedef std::string song_t;
 
 		class Access {
 		public:
 			Access(const std::string& host, size_t port);
 			virtual ~Access();
 
-			void songs(std::list<Song>& out) const;
+			void connect();
+
+			void songs(std::list<song_t>& out) const;
+
+			bool rating_get(const song_t& song, rating_t& out) const;
+			void rating_clear(const song_t& song);
+			void rating_set(const song_t& song, rating_t rating);
 		private:
 			const std::string host;
+			const size_t port;
 			struct mpd_connection* conn;
 		};
 	}

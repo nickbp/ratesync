@@ -72,10 +72,12 @@ bool check_dir(const char* dirpath, bool check_write = false) {
 		error("'%s' is not a directory.", dirpath);
 		return false;
 	}
-	if (check_write && access(dirpath, X_OK | W_OK) != 0) {
-		error("Directory '%s' does not allow write+execute access.", dirpath);
+	//TODO need to test how things act with exec off:
+	if (check_write && access(dirpath, W_OK) != 0) {
+		error("Directory '%s' does not allow write access.", dirpath);
 		return false;
 	} else if (access(dirpath, X_OK | R_OK) != 0) {
+		//need to ls music dir with move command
 		error("Directory '%s' does not allow read+execute access.", dirpath);
 		return false;
 	}
@@ -217,7 +219,7 @@ int main(int argc, char* argv[]) {
 			error("%s: output directory required for move command", argv[0]);
 			return 1;
 		}
-		log("file move support WIP");
+		log("file move support WIP");//TODO
 		//output_copy, output_dir
 	}
 	return 0;
