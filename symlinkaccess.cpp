@@ -1,6 +1,3 @@
-#ifndef MPDTAGGER_MEDIAACCESS_H
-#define MPDTAGGER_MEDIAACCESS_H
-
 /*
   mpdtagger - Synchronizes metadata between MPD stickers and media files.
   Copyright (C) 2010  Nicholas Parker
@@ -19,36 +16,24 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdexcept>
-#include <string>
-#include <list>
-#include <map>
-#include <set>
+#include "symlinkaccess.h"
 
-#include "song.h"
+#include <sstream>
 
-namespace mpdtagger {
-	namespace media {
-		class Error : public std::runtime_error {
-		public:
-		Error(const std::string& what) :
-			std::runtime_error(what) { }
-		};
-
-		class Access {
-		public:
-			Access(const std::string& music_dir)
-				: music_dir(music_dir) { }
-
-			void ratings(std::map<song_t,rating_t>& out_rating,
-						 std::set<song_t>& out_unrated);
-			void ratings(const std::list<song_t>& songs,
-						 std::map<song_t,rating_t>& out_rating,
-						 std::set<song_t>& out_unrated);
-		private:
-			const std::string music_dir;
-		};
-	}
+void mpdtagger::symlink::Access::symlinks(std::map<symlink_t, rating_t>& out_rating,
+										  std::list<symlink_t>& out_dangling) const {
+	return;//TODO go through outdir's expected rating paths and see what symlinks are present.
+	//return 'ratings' according to what rating subdir things are in
 }
 
-#endif
+void mpdtagger::symlink::Access::symlink_clear(const symlink_t& song) {
+	return;//TODO delete symlink
+}
+
+void mpdtagger::symlink::Access::symlink_set(const symlink_t& song, rating_t rating) {
+	return;//TODO delete old symlink (if present), create new
+}
+
+void mpdtagger::symlink::Access::symlink_add(const song_t& song, rating_t rating) {
+	return;//TODO create new (based off path of song)
+}

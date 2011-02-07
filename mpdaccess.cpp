@@ -25,7 +25,7 @@ namespace {
 	static const char* RATING_STICKER = "rating";
 
 	bool rating_get(struct mpd_connection* conn,
-					const mpdtagger::mpd::song_t& song,
+					const mpdtagger::song_t& song,
 					mpdtagger::rating_t& out) {
 		struct mpd_pair* mpd_rating_pair;
 		if (mpd_send_sticker_get(conn, "song", song.c_str(), RATING_STICKER) &&

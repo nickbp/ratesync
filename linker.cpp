@@ -16,7 +16,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "tagger.h"
+#include "linker.h"
 #include "config.h"
 
 #include <sstream>
@@ -72,54 +72,56 @@ namespace {
 	}
 }
 
-bool mpdtagger::Tagger::calculate_changes() {
-	//get all mpd songs and their ratings:
-	std::list<song_t> mpd_songs;
-	std::map<song_t, rating_t> mpd_ratings;
+bool mpdtagger::Linker::calculate_changes() {
+	//get all symlinks and their ratings:
+	std::map<symlink_t, rating_t> symlink_ratings;
+	std::list<symlink_t> symlink_dangling;
 	{
-		mpd::Access mpd(host, port);
+		symlink::Access symlink(out_dir);
 		try {
-			mpd.connect();
-			mpd.ratings(mpd_songs, mpd_ratings);
-		} catch (const mpd::Error& err) {
-			throw TaggerError(err.what());
+			symlink.symlinks(symlink_ratings, symlink_dangling);
+		} catch (const symlink::Error& err) {
+			throw LinkerError(err.what());
 		}
 	}
-	
-	//given mpd song list, get local file metadata ratings:
+
+	//get local file metadata ratings for everything in the directory:
 	std::map<song_t, rating_t> file_ratings;
 	std::set<song_t> file_unrated;
 	{
-		media::Access media(dir);
+		media::Access media(in_dir);
 		try {
-			media.ratings(mpd_songs, file_ratings, file_unrated);
+			media.ratings(file_ratings, file_unrated);
 		} catch (const media::Error& err) {
-			throw TaggerError(err.what());
+			throw LinkerError(err.what());
 		}
 	}
 
-	//get list of files whose ratings differ:
-	get_changes(mpd_songs, mpd_ratings, file_ratings, file_unrated,
-				unrated_to_rating, rating_to_unrated, rating_change);
+	//states:
+	// song has been deleted, link is dangling (delete symlink)
+	// link is out of date -- song is now a different rating (move symlink)
+	// link is out of date -- song is now unrated (delete symlink)
+	// link is missing -- song has been added recently (add symlink)
 
-	return (!unrated_to_rating.empty() ||
-			!rating_to_unrated.empty() ||
-			!rating_change.empty());
+	//TODO create symlink::Access (parallel equivalent to mpd::Access) to calculate where files would go and see if that's where they already are
+	//need to watch out for recursive eg Music/1/orig_path/file.mp3 -> Music/1/1/orig_path/file.mp3
+	//also need to check for files in output path 
+	return false;
 }
 
-void mpdtagger::Tagger::print_changes() const {
+void mpdtagger::Linker::print_changes() const {
 	bool printed = false;
 	if (!unrated_to_rating.empty()) {
 		printed = true;
-		config::log("%d files unrated in MPD, rated on disk",
+		config::log("%d files unlinked in output directory, rated on disk",
 					unrated_to_rating.size());
 		int i = 0;
-		for (std::list<song_rating_t>::const_iterator iter
+		for (std::list<symlink_rating_t>::const_iterator iter
 				 = unrated_to_rating.begin();
 			 iter != unrated_to_rating.end(); iter++) {
 			config::log("  %d/%d %s: unrated -> %d",
 						i++, unrated_to_rating.size(),
-						iter->first.c_str(), iter->second);
+						iter->first.first.c_str(), iter->second);
 		}
 	}
 
@@ -128,15 +130,15 @@ void mpdtagger::Tagger::print_changes() const {
 			config::log("");
 		}
 		printed = true;
-		config::log("%d files rated in MPD, unrated on disk",
+		config::log("%d files linked in output directory, unrated on disk",
 					rating_to_unrated.size());
 		int i = 0;
-		for (std::list<song_rating_t>::const_iterator iter
+		for (std::list<symlink_rating_t>::const_iterator iter
 				 = rating_to_unrated.begin();
 			 iter != rating_to_unrated.end(); iter++) {
 			config::log("  %d/%d %s: %d -> unrated",
 						i++, rating_to_unrated.size(),
-						iter->first.c_str(), iter->second);
+						iter->first.first.c_str(), iter->second);
 		}
 	}
 
@@ -145,15 +147,15 @@ void mpdtagger::Tagger::print_changes() const {
 			config::log("");
 		}
 		printed = true;
-		config::log("%d files rated in MPD, rated differently on disk",
+		config::log("%d files linked in output directory, rated differently on disk",
 					rating_change.size());
 		int i = 0;
-		for (std::list<song_ratings_t>::const_iterator iter
+		for (std::list<symlink_ratings_t>::const_iterator iter
 				 = rating_change.begin();
 			 iter != rating_change.end(); iter++) {
 			config::log("  %d/%d %s: %d -> %d",
 						i++, rating_change.size(),
-						iter->first.c_str(),
+						iter->first.first.c_str(),
 						iter->second.first, iter->second.second);
 		}
 	}
@@ -162,54 +164,49 @@ void mpdtagger::Tagger::print_changes() const {
 		config::log("No changes to be made.");
 	} else {
 		config::log("");
-		config::log("%d total changes to be made in MPD.",
+		config::log("%d total changes to be made in output directory.",
 					unrated_to_rating.size() + rating_to_unrated.size() +
 					rating_change.size());
 	}
 }
 
-void mpdtagger::Tagger::apply_changes() {
-	mpd::Access mpd(host, port);
-	try {
-		mpd.connect();
-	} catch (const mpd::Error& err) {
-		throw TaggerError(err.what());
-	}
+void mpdtagger::Linker::apply_changes() {
+	symlink::Access symlink(out_dir);
 
-	for (std::list<song_rating_t>::const_iterator iter
+	for (std::list<symlink_rating_t>::const_iterator iter
 			 = unrated_to_rating.begin();
 		 iter != unrated_to_rating.end(); iter++) {
 		try {
-			mpd.rating_set(iter->first, iter->second);
-		} catch (const mpd::Error& err) {
-			throw TaggerError(err.what());
+			symlink.symlink_set(iter->first, iter->second);
+		} catch (const symlink::Error& err) {
+			throw LinkerError(err.what());
 		}
 		config::debug("SET %s: UNRATED -> %d",
-					  iter->first.c_str(), iter->second);
+					  iter->first.first.c_str(), iter->second);
 	}
 
-	for (std::list<song_rating_t>::const_iterator iter
+	for (std::list<symlink_rating_t>::const_iterator iter
 			 = rating_to_unrated.begin();
 		 iter != rating_to_unrated.end(); iter++) {
 		try {
-			mpd.rating_clear(iter->first);
-		} catch (const mpd::Error& err) {
-			throw TaggerError(err.what());
+			symlink.symlink_clear(iter->first);
+		} catch (const symlink::Error& err) {
+			throw LinkerError(err.what());
 		}
 		config::debug("SET %s: %d -> UNRATED",
-					  iter->first.c_str(), iter->second);
+					  iter->first.first.c_str(), iter->second);
 	}
 
-	for (std::list<song_ratings_t>::const_iterator iter
+	for (std::list<symlink_ratings_t>::const_iterator iter
 			 = rating_change.begin();
 		 iter != rating_change.end(); iter++) {
 		try {
-			mpd.rating_set(iter->first, iter->second.second);
-		} catch (const mpd::Error& err) {
-			throw TaggerError(err.what());
+			symlink.symlink_set(iter->first, iter->second.second);
+		} catch (const symlink::Error& err) {
+			throw LinkerError(err.what());
 		}
 		config::debug("SET %s: %d -> %d",
-					  iter->first.c_str(),
+					  iter->first.first.c_str(),
 					  iter->second.first, iter->second.second);
 	}
 }

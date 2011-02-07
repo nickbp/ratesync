@@ -27,10 +27,8 @@
 
 #include "song.h"
 
-struct mpd_connection;
-
 namespace mpdtagger {
-	namespace mpd {
+	namespace symlink {
 		class Error : public std::runtime_error {
 		public:
 		Error(const std::string& what) :
@@ -39,20 +37,17 @@ namespace mpdtagger {
 
 		class Access {
 		public:
-			Access(const std::string& host, size_t port);
-			virtual ~Access();
+			Access(const std::string& symlink_dir)
+				: symlink_dir(symlink_dir) { }
 
-			void connect();
+			void symlinks(std::map<symlink_t, rating_t>& out_rating,
+						  std::list<symlink_t>& out_dangling) const;
 
-			void ratings(std::list<song_t>& out_all,
-						 std::map<song_t,rating_t>& out_rating) const;
-
-			void rating_clear(const song_t& song);
-			void rating_set(const song_t& song, rating_t rating);
+			void symlink_clear(const symlink_t& song);
+			void symlink_set(const symlink_t& song, rating_t rating);
+			void symlink_add(const song_t& song, rating_t rating);
 		private:
-			const std::string host;
-			const size_t port;
-			struct mpd_connection* conn;
+			const std::string symlink_dir;
 		};
 	}
 }

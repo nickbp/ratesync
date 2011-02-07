@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 
 #include "tagger.h"
+#include "linker.h"
 #include "config.h"
 
 using mpdtagger::config::error;
@@ -35,7 +36,8 @@ using mpdtagger::config::debug;
 #define DEFAULT_MPD_PORT 6600
 
 namespace {
-	bool help_cmd = false, move_cmd = false, tag_cmd = false, output_copy = false;
+	bool help_cmd = false, sort_cmd = false, tag_cmd = false,
+		no_confirm = false;
 	std::string mpd_host = DEFAULT_MPD_HOST, music_dir, output_dir;
 	size_t mpd_port = DEFAULT_MPD_PORT;
 }
@@ -46,20 +48,21 @@ void syntax(char* appname) {
 		  mpdtagger::config::BUILD_DATE);
 	error("Usage: %s [options] <command> <musicdir>", appname);
 	error("Commands:");
-	error("  tag   Store song rating metadata into mpd tag database.");
-	error("  move  Sort files into numbered directories according to their ratings.");
+	error("  tompd     Store song rating metadata into MPD database.");
+	error("  linksort  Create symlinks to files, grouped according to their ratings.");
 	error("");
 	error("Common Options:");
-	error("  -h/--help     This help text.");
-	error("  -v/--verbose  Show verbose output.");
+	error("  -h/--help        This help text.");
+	error("  -v/--verbose     Show verbose output.");
+	error("  -n/--no-confirm  Don't confirm changes before applying them.");
 	error("");
-	error("Tag Options:");
+	error("tompd Command Options:");
 	error("  -m/--mpd-host <host[:port]>  MPD host/port. (default %s:%d)",
 		  DEFAULT_MPD_HOST, DEFAULT_MPD_PORT);
 	error("");
-	error("Move Options:");
-	error("  -o/--output-dir <path>  Where to move/copy sorted files. Required.");
-	error("  -c/--output-copy        Copy files instead of moving them.");
+	error("linksort Command Options:");
+	error("  -o/--output-dir <path>  Where to put sorted files/symlinks.");
+	error("                          (default: <musicdir>/rating)");
 }
 
 bool check_dir(const char* dirpath, bool check_write = false) {
@@ -94,14 +97,15 @@ bool parse_config(int argc, char* argv[]) {
 		static struct option long_options[] = {
 			{"help", 0, NULL, 'h'},
 			{"verbose", 0, NULL, 'v'},
+			{"no-confirm", 0, NULL, 'n'},
 			{"mpd-host", 1, NULL, 'm'},
 			{"output-dir", 1, NULL, 'o'},
-			{"output-copy", 0, NULL, 'c'},
 			{0,0,0,0}
 		};
 
-		c = getopt_long(argc, argv, "hvm:o:c",
-						long_options, NULL);
+		int option_index = 0;
+		c = getopt_long(argc, argv, "hvnm:o:",
+						long_options, &option_index);
 		if (c == -1) {//unknown arg (doesnt match -x/--x format)
 			if (optind >= argc) {
 				//at end of successful parse
@@ -111,11 +115,11 @@ bool parse_config(int argc, char* argv[]) {
 			for (int i = optind; i < argc; ++i) {
 				const char* arg = argv[i];
 				debug("%d %d %s", argc, i, arg);
-				if (!tag_cmd && !move_cmd) {
-					if (strcmp(arg, "tag") == 0) {
+				if (!tag_cmd && !sort_cmd) {
+					if (strcmp(arg, "tompd") == 0) {
 						tag_cmd = true;
-					} else if (strcmp(arg, "move") == 0) {
-						move_cmd = true;
+					} else if (strcmp(arg, "linksort") == 0) {
+						sort_cmd = true;
 					} else {
 						error("%s: unknown argument: '%s'", argv[0], argv[i]);
 						syntax(argv[0]);
@@ -143,6 +147,9 @@ bool parse_config(int argc, char* argv[]) {
 		case 'v':
 			mpdtagger::config::debug_enabled = true;
 			break;
+		case 'n':
+			no_confirm = true;
+			break;
 		case 'm':
 			{
 				std::string host_port(optarg);
@@ -167,16 +174,13 @@ bool parse_config(int argc, char* argv[]) {
 			}
 			output_dir = std::string(optarg);
 			break;
-		case 'c':
-			output_copy = true;
-			break;
 		default:
 			syntax(argv[0]);
 			return false;
 		}
 	}
 
-	if (!tag_cmd && !move_cmd) {
+	if (!tag_cmd && !sort_cmd) {
 		error("%s: no command specified", argv[0]);
 		syntax(argv[0]);
 		return false;
@@ -189,10 +193,10 @@ bool parse_config(int argc, char* argv[]) {
 
 	debug("common opts:");
 	debug("  music-dir: %s", music_dir.c_str());
+	debug("  no-confirm: %d", no_confirm);
 	debug("mpdtag opts (%s)", (tag_cmd ? "enabled" : "disabled"));
 	debug("  mpd-host: %s (port %d)", mpd_host.c_str(), mpd_port);
-	debug("move opts (%s)", (move_cmd ? "enabled" : "disabled"));
-	debug("  output-copy: %s", (output_copy ? "enabled" : "disabled"));
+	debug("move opts (%s)", (sort_cmd ? "enabled" : "disabled"));
 	debug("  output-dir: %s", output_dir.c_str());
 
 	return true;
@@ -215,14 +219,17 @@ int main(int argc, char* argv[]) {
 		syntax(argv[0]);
 		return 0;
 	} else if (tag_cmd) {
+		mpdtagger::Tagger tagger(mpd_host, mpd_port, music_dir);
+		log("Calculating tags...");
 		try {
-			mpdtagger::Tagger tagger(mpd_host, mpd_port, music_dir);
-			log("Calculating changes...");
 			if (tagger.calculate_changes()) {
 				log("The following changes are about to be applied to your MPD database:");
 				tagger.print_changes();
-				if (promptYN("Continue with these changes to your MPD database?")) {
+				if (no_confirm ||
+					promptYN("Continue with these changes to your MPD database?")) {
+					log("Applying changes...");
 					tagger.apply_changes();
+					log("Complete.");
 				}
 			} else {
 				log("Your MPD database is up to date.");
@@ -231,13 +238,29 @@ int main(int argc, char* argv[]) {
 			error(err.what());
 			return 1;
 		}
-	} else if (move_cmd) {
+	} else if (sort_cmd) {
 		if (output_dir.length() == 0) {
-			error("%s: output directory required for move command", argv[0]);
+			output_dir = music_dir;//TODO append /rating
+		}
+		mpdtagger::Linker linker(music_dir, output_dir);
+		log("Calculating symlinks...");
+		try {
+			if (linker.calculate_changes()) {
+				log("The following changes are about to be applied to your output directory:");
+				linker.print_changes();
+				if (no_confirm ||
+					promptYN("Continue with these changes to your output directory?")) {
+					log("Applying changes...");
+					linker.apply_changes();
+					log("Complete.");
+				}
+			} else {
+				log("Your output directory is up to date.");
+			}
+		} catch (const mpdtagger::LinkerError& err) {
+			error(err.what());
 			return 1;
 		}
-		log("file move support WIP");//TODO
-		//output_copy, output_dir
 	}
 	return 0;
 }

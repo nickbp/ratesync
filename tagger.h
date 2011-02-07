@@ -20,7 +20,6 @@
 */
 
 #include <stdexcept>
-#include <string>
 
 #include "mpdaccess.h"
 #include "mediaaccess.h"
@@ -34,8 +33,8 @@ namespace mpdtagger {
 
 	class Tagger {
 	public:
-	Tagger(std::string mpd_host, size_t mpd_port,
-		   std::string music_dir)
+	Tagger(const std::string& mpd_host, size_t mpd_port,
+		   const std::string& music_dir)
 		: dir(music_dir), host(mpd_host), port(mpd_port) { }
 
 		bool calculate_changes();
@@ -45,9 +44,6 @@ namespace mpdtagger {
 	private:
 		const std::string dir, host;
 		const size_t port;
-
-		typedef std::pair<mpd::song_t, rating_t> song_rating_t;
-		typedef std::pair<mpd::song_t, std::pair<rating_t, rating_t> > song_ratings_t;
 
 		std::list<song_rating_t> unrated_to_rating;
 		std::list<song_rating_t> rating_to_unrated;

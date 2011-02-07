@@ -1,5 +1,5 @@
-#ifndef MPDTAGGER_MPDACCESS_H
-#define MPDTAGGER_MPDACCESS_H
+#ifndef MPDTAGGER_LINKER_H
+#define MPDTAGGER_LINKER_H
 
 /*
   mpdtagger - Synchronizes metadata between MPD stickers and media files.
@@ -21,40 +21,33 @@
 
 #include <stdexcept>
 #include <string>
-#include <list>
-#include <map>
-#include <set>
 
-#include "song.h"
-
-struct mpd_connection;
+#include "symlinkaccess.h"
+#include "mediaaccess.h"
 
 namespace mpdtagger {
-	namespace mpd {
-		class Error : public std::runtime_error {
-		public:
-		Error(const std::string& what) :
-			std::runtime_error(what) { }
-		};
+	class LinkerError : public std::runtime_error {
+	public:
+	LinkerError(const std::string& what) :
+		std::runtime_error(what) { }
+	};
 
-		class Access {
-		public:
-			Access(const std::string& host, size_t port);
-			virtual ~Access();
+	class Linker {
+	public:
+	Linker(const std::string& in_dir, const std::string& out_dir)
+		: in_dir(in_dir), out_dir(out_dir) { }
 
-			void connect();
+		bool calculate_changes();
+		void print_changes() const;
+		void apply_changes();
 
-			void ratings(std::list<song_t>& out_all,
-						 std::map<song_t,rating_t>& out_rating) const;
+	private:
+		const std::string in_dir, out_dir;
 
-			void rating_clear(const song_t& song);
-			void rating_set(const song_t& song, rating_t rating);
-		private:
-			const std::string host;
-			const size_t port;
-			struct mpd_connection* conn;
-		};
-	}
+		std::list<symlink_rating_t> unrated_to_rating;
+		std::list<symlink_rating_t> rating_to_unrated;
+		std::list<symlink_ratings_t> rating_change;
+	};
 }
 
 #endif

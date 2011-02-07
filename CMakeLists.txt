@@ -9,11 +9,16 @@ set (mpdtagger_VERSION_PATCH 0)
 SET(SRCS
   config.in.h
   config.cpp
+  linker.h
+  linker.cpp
   main.cpp
   mediaaccess.h
   mediaaccess.cpp
   mpdaccess.h
   mpdaccess.cpp
+  song.h
+  symlinkaccess.h
+  symlinkaccess.cpp
   tagger.h
   tagger.cpp)
 

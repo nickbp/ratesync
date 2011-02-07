@@ -61,45 +61,25 @@ namespace {
 		return ending.compare(needle) == 0;
 	}
 
-	bool check_file(const std::string& filepath,
-					bool isdir, bool throw_err/*=false*/) {
+	void check_file(const std::string& filepath) {
 		struct stat sb;
 		if (stat(filepath.c_str(), &sb) != 0) {
-			if (throw_err) {
-				std::ostringstream oss;
-				oss << "File not found/unable to get status: " << filepath;
-				throw mpdtagger::media::Error(oss.str());
-			}
-			return false;
+			std::ostringstream oss;
+			oss << "File not found/unable to get status: " << filepath;
+			throw mpdtagger::media::Error(oss.str());
 		}
 
 		if (access(filepath.c_str(), R_OK) != 0) {
-			if (throw_err) {
-				std::ostringstream oss;
-				oss << "Read access denied: " << filepath;
-				throw mpdtagger::media::Error(oss.str());
-			}
-			return false;
+			std::ostringstream oss;
+			oss << "Read access denied: " << filepath;
+			throw mpdtagger::media::Error(oss.str());
 		}
 
-		if (isdir && !S_ISDIR(sb.st_mode)) {
-			if (throw_err) {
-				std::ostringstream oss;
-				oss << "Not a directory: " << filepath;
-				throw mpdtagger::media::Error(oss.str());
-			}
-			return false;
+		if (!S_ISREG(sb.st_mode)) {
+			std::ostringstream oss;
+			oss << "Not a regular file: " << filepath;
+			throw mpdtagger::media::Error(oss.str());
 		}
-
-		if (!isdir && !S_ISREG(sb.st_mode)) {
-			if (throw_err) {
-				std::ostringstream oss;
-				oss << "Not a regular file: " << filepath;
-				throw mpdtagger::media::Error(oss.str());
-			}
-			return false;
-		}
-		return true;
 	}
 
 	bool xiph_rating(TagLib::Ogg::XiphComment* xiphcomment,
@@ -168,59 +148,60 @@ namespace {
 		return false;
 	}
 
-}
+	bool rating(const mpdtagger::song_t& song, mpdtagger::rating_t& out) {
+		const char* songpath_s = song.c_str();
+		if (string_ends_with(song, ".mp3")) {
+			TagLib::MPEG::File mpegfile(songpath_s, false);
+			TagLib::ID3v2::Tag* id3v2tag = mpegfile.ID3v2Tag();
+			if (id3v2tag) {
+				return id3v2_rating(id3v2tag, out);
+			}
+		} else if (string_ends_with(song, ".ogg") ||
+				   string_ends_with(song, ".oga")) {
+			TagLib::Ogg::Vorbis::File oggfile(songpath_s, false);
+			TagLib::Ogg::XiphComment* xiphcomment = oggfile.tag();
+			if (xiphcomment) {
+				return xiph_rating(xiphcomment, out);
+			}
 
-bool mpdtagger::media::File::rating(rating_t& out) {
-	const char* songpath_s = path.c_str();
-	if (string_ends_with(path,".mp3")) {
-		TagLib::MPEG::File mpegfile(songpath_s, false);
-		TagLib::ID3v2::Tag* id3v2tag = mpegfile.ID3v2Tag();
-		if (id3v2tag) {
-			return id3v2_rating(id3v2tag, out);
-		}
-	} else if (string_ends_with(path,".ogg") || string_ends_with(path,".oga")) {
-		TagLib::Ogg::Vorbis::File oggfile(songpath_s, false);
-		TagLib::Ogg::XiphComment* xiphcomment = oggfile.tag();
-		if (xiphcomment) {
-			return xiph_rating(xiphcomment, out);
-		}
+			TagLib::Ogg::FLAC::File oggflacfile(songpath_s, false);
+			xiphcomment = oggflacfile.tag();
+			if (xiphcomment) {
+				return xiph_rating(xiphcomment, out);
+			}
+		} else if (string_ends_with(song, ".flac")) {
+			TagLib::FLAC::File flacfile(songpath_s, false);
+			TagLib::Ogg::XiphComment* xiphcomment = flacfile.xiphComment();
+			if (xiphcomment) {
+				return xiph_rating(xiphcomment, out);
+			}
 
-		TagLib::Ogg::FLAC::File oggflacfile(songpath_s, false);
-		xiphcomment = oggflacfile.tag();
-		if (xiphcomment) {
-			return xiph_rating(xiphcomment, out);
+			TagLib::ID3v2::Tag* id3v2tag = flacfile.ID3v2Tag();
+			if (id3v2tag) {
+				return id3v2_rating(id3v2tag, out);
+			}
 		}
-	} else if (string_ends_with(path,".flac")) {
-		TagLib::FLAC::File flacfile(songpath_s, false);
-		TagLib::Ogg::XiphComment* xiphcomment = flacfile.xiphComment();
-		if (xiphcomment) {
-			return xiph_rating(xiphcomment, out);
-		}
-
-		TagLib::ID3v2::Tag* id3v2tag = flacfile.ID3v2Tag();
-		if (id3v2tag) {
-			return id3v2_rating(id3v2tag, out);
-		}
+		return false;
 	}
-	return false;
 }
 
-mpdtagger::media::Access::Access(const std::string& music_dir) : music_dir(music_dir) {
-	check_file(music_dir, true, true);
+void mpdtagger::media::Access::ratings(std::map<song_t,rating_t>& out_ratings,
+									   std::set<song_t>& out_unrated) {
+	std::list<song_t> songs;//TODO get list of songs in directory
+	ratings(songs, out_ratings, out_unrated);
 }
 
-void mpdtagger::media::Access::ratings(const std::list<mpd::song_t>& mpd_songs,
-									   std::map<mpd::song_t,rating_t>& out_ratings,
-									   std::set<mpd::song_t>& out_unrated) {
-	for (std::list<mpd::song_t>::const_iterator it = mpd_songs.begin();
-		 it != mpd_songs.end(); it++) {
-		std::string songpath(music_dir + *it);
-		check_file(songpath, false, true);
+void mpdtagger::media::Access::ratings(const std::list<song_t>& songs,
+									   std::map<song_t,rating_t>& out_ratings,
+									   std::set<song_t>& out_unrated) {
+	for (std::list<song_t>::const_iterator it = songs.begin();
+		 it != songs.end(); it++) {
+		std::string songpath(music_dir + *it);//TODO proper path support
+		check_file(songpath);
 
 		try {
-			File media(songpath);
 			rating_t r;
-			if (media.rating(r)) {
+			if (rating(songpath, r)) {
 				config::debug("RATING %s = %d", it->c_str(), r);
 				out_ratings.insert(std::make_pair(*it,r));
 			} else {
