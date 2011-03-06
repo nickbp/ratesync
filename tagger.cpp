@@ -1,5 +1,5 @@
 /*
-  mpdtagger - Synchronizes metadata between MPD stickers and media files.
+  ratesong - Synchronizes metadata between MPD stickers and media files.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -23,11 +23,11 @@
 #include <iostream>
 
 namespace {
-	using mpdtagger::song_t;
-	using mpdtagger::rating_t;
+	using ratesong::song_t;
+	using ratesong::rating_t;
 
-	using mpdtagger::song_rating_t;
-	using mpdtagger::song_ratings_t;
+	using ratesong::song_rating_t;
+	using ratesong::song_ratings_t;
 
 	void get_changes(const std::list<song_t>& mpd_songs,
 					 const std::map<song_t, rating_t>& mpd_ratings,
@@ -68,33 +68,29 @@ namespace {
 															  mpd_rating));
 				}
 			}
-		}		
+		}
 	}
 }
 
-bool mpdtagger::Tagger::calculate_changes() {
+bool ratesong::Tagger::calculate_changes() {
 	//get all mpd songs and their ratings:
 	std::list<song_t> mpd_songs;
 	std::map<song_t, rating_t> mpd_ratings;
 	{
 		mpd::Access mpd(host, port);
-		try {
-			mpd.connect();
-			mpd.ratings(mpd_songs, mpd_ratings);
-		} catch (const mpd::Error& err) {
-			throw TaggerError(err.what());
+		if (!mpd.connect() ||
+			!mpd.ratings(mpd_songs, mpd_ratings)) {
+			return false;
 		}
 	}
-	
+
 	//given mpd song list, get local file metadata ratings:
 	std::map<song_t, rating_t> file_ratings;
 	std::set<song_t> file_unrated;
 	{
 		media::Access media(dir);
-		try {
-			media.ratings(mpd_songs, file_ratings, file_unrated);
-		} catch (const media::Error& err) {
-			throw TaggerError(err.what());
+		if (!media.ratings(mpd_songs, file_ratings, file_unrated)) {
+			return false;
 		}
 	}
 
@@ -102,12 +98,16 @@ bool mpdtagger::Tagger::calculate_changes() {
 	get_changes(mpd_songs, mpd_ratings, file_ratings, file_unrated,
 				unrated_to_rating, rating_to_unrated, rating_change);
 
+	return true;
+}
+
+bool ratesong::Tagger::has_changes() const {
 	return (!unrated_to_rating.empty() ||
 			!rating_to_unrated.empty() ||
 			!rating_change.empty());
 }
 
-void mpdtagger::Tagger::print_changes() const {
+void ratesong::Tagger::print_changes() const {
 	bool printed = false;
 	if (!unrated_to_rating.empty()) {
 		printed = true;
@@ -168,21 +168,17 @@ void mpdtagger::Tagger::print_changes() const {
 	}
 }
 
-void mpdtagger::Tagger::apply_changes() {
+bool ratesong::Tagger::apply_changes() {
 	mpd::Access mpd(host, port);
-	try {
-		mpd.connect();
-	} catch (const mpd::Error& err) {
-		throw TaggerError(err.what());
+	if (!mpd.connect()) {
+		return false;
 	}
 
-	for (std::list<song_rating_t>::const_iterator iter
-			 = unrated_to_rating.begin();
+	for (std::list<song_rating_t>::const_iterator
+			 iter = unrated_to_rating.begin();
 		 iter != unrated_to_rating.end(); iter++) {
-		try {
-			mpd.rating_set(iter->first, iter->second);
-		} catch (const mpd::Error& err) {
-			throw TaggerError(err.what());
+		if (!mpd.rating_set(iter->first, iter->second)) {
+			return false;
 		}
 		config::debug("SET %s: UNRATED -> %d",
 					  iter->first.c_str(), iter->second);
@@ -191,10 +187,8 @@ void mpdtagger::Tagger::apply_changes() {
 	for (std::list<song_rating_t>::const_iterator iter
 			 = rating_to_unrated.begin();
 		 iter != rating_to_unrated.end(); iter++) {
-		try {
-			mpd.rating_clear(iter->first);
-		} catch (const mpd::Error& err) {
-			throw TaggerError(err.what());
+		if (!mpd.rating_clear(iter->first)) {
+			return false;
 		}
 		config::debug("SET %s: %d -> UNRATED",
 					  iter->first.c_str(), iter->second);
@@ -203,13 +197,13 @@ void mpdtagger::Tagger::apply_changes() {
 	for (std::list<song_ratings_t>::const_iterator iter
 			 = rating_change.begin();
 		 iter != rating_change.end(); iter++) {
-		try {
-			mpd.rating_set(iter->first, iter->second.second);
-		} catch (const mpd::Error& err) {
-			throw TaggerError(err.what());
+		if (!mpd.rating_set(iter->first, iter->second.second)) {
+			return false;
 		}
 		config::debug("SET %s: %d -> %d",
 					  iter->first.c_str(),
 					  iter->second.first, iter->second.second);
 	}
+
+	return true;
 }

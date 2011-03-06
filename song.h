@@ -1,9 +1,15 @@
-#ifndef MPDTAGGER_SONG_H
-#define MPDTAGGER_SONG_H
+#ifndef RATESONG_SONG_H
+#define RATESONG_SONG_H
 
 #include <string>
 
-namespace mpdtagger {
+#ifdef _WIN32
+#define SEP '\\'
+#else
+#define SEP '/'
+#endif
+
+namespace ratesong {
 	typedef size_t rating_t;
 
 

@@ -4,13 +4,13 @@ $ sudo apt-get install build-essential cmake libmpdclient-dev libtag1-dev
 
 Example initial build (after prerequisites are installed):
 
-mpdtagger$ mkdir src out
-mpdtagger$ mv * .git src
+ratesong$ mkdir src out
+ratesong$ mv * .git src
 (you should now have two subdirectories: src/ and out/)
-mpdtagger$ cd out
-mpdtagger/out$ cmake ../src
+ratesong$ cd out
+ratesong/out$ cmake ../src
 (this generates makefiles -- cmake may also be used for configuring build parameters (optional))
-mpdtagger/out$ make
-mpdtagger/out$ ./mpdtagger -h
+ratesong/out$ make
+ratesong/out$ ./ratesong -h
 
 All set!

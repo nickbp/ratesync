@@ -1,5 +1,5 @@
-#ifndef RATESONG_TAGGER_H
-#define RATESONG_TAGGER_H
+#ifndef RATESONG_MPD_ACCESS_H
+#define RATESONG_MPD_ACCESS_H
 
 /*
   ratesong - Synchronizes metadata between MPD stickers and media files.
@@ -19,29 +19,35 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "mpd-access.h"
-#include "media-access.h"
+#include <string>
+#include <list>
+#include <map>
+#include <set>
+
+#include "song.h"
+
+struct mpd_connection;
 
 namespace ratesong {
-	class Tagger {
-	public:
-	Tagger(const std::string& mpd_host, size_t mpd_port,
-		   const std::string& music_dir)
-		: dir(music_dir), host(mpd_host), port(mpd_port) { }
+	namespace mpd {
+		class Access {
+		public:
+			Access(const std::string& host, size_t port);
+			virtual ~Access();
 
-		bool calculate_changes();
-		bool has_changes() const;
-		void print_changes() const;
-		bool apply_changes();
+			bool connect();
 
-	private:
-		const std::string dir, host;
-		const size_t port;
+			bool ratings(std::list<song_t>& out_all,
+						 std::map<song_t,rating_t>& out_rating) const;
 
-		std::list<song_rating_t> unrated_to_rating;
-		std::list<song_rating_t> rating_to_unrated;
-		std::list<song_ratings_t> rating_change;
-	};
+			bool rating_clear(const song_t& song);
+			bool rating_set(const song_t& song, rating_t rating);
+		private:
+			const std::string host;
+			const size_t port;
+			struct mpd_connection* conn;
+		};
+	}
 }
 
 #endif

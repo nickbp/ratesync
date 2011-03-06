@@ -1,5 +1,5 @@
 /*
-  mpdtagger - Synchronizes metadata between MPD stickers and media files.
+  ratesong - Synchronizes metadata between MPD stickers and media files.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -23,11 +23,11 @@
 #include <iostream>
 
 namespace {
-	using mpdtagger::song_t;
-	using mpdtagger::rating_t;
+	using ratesong::song_t;
+	using ratesong::rating_t;
 
-	using mpdtagger::song_rating_t;
-	using mpdtagger::song_ratings_t;
+	using ratesong::song_rating_t;
+	using ratesong::song_ratings_t;
 
 	void get_changes(const std::list<song_t>& mpd_songs,
 					 const std::map<song_t, rating_t>& mpd_ratings,
@@ -68,20 +68,18 @@ namespace {
 															  mpd_rating));
 				}
 			}
-		}		
+		}
 	}
 }
 
-bool mpdtagger::Linker::calculate_changes() {
+bool ratesong::Linker::calculate_changes() {
 	//get all symlinks and their ratings:
 	std::map<symlink_t, rating_t> symlink_ratings;
 	std::list<symlink_t> symlink_dangling;
 	{
 		symlink::Access symlink(out_dir);
-		try {
-			symlink.symlinks(symlink_ratings, symlink_dangling);
-		} catch (const symlink::Error& err) {
-			throw LinkerError(err.what());
+		if (!symlink.symlinks(symlink_ratings, symlink_dangling)) {
+			return false;
 		}
 	}
 
@@ -90,10 +88,8 @@ bool mpdtagger::Linker::calculate_changes() {
 	std::set<song_t> file_unrated;
 	{
 		media::Access media(in_dir);
-		try {
-			media.ratings(file_ratings, file_unrated);
-		} catch (const media::Error& err) {
-			throw LinkerError(err.what());
+		if (!media.ratings(file_ratings, file_unrated)) {
+			return false;
 		}
 	}
 
@@ -105,11 +101,17 @@ bool mpdtagger::Linker::calculate_changes() {
 
 	//TODO create symlink::Access (parallel equivalent to mpd::Access) to calculate where files would go and see if that's where they already are
 	//need to watch out for recursive eg Music/1/orig_path/file.mp3 -> Music/1/1/orig_path/file.mp3
-	//also need to check for files in output path 
-	return false;
+	//also need to check for files in output path
+	return true;
 }
 
-void mpdtagger::Linker::print_changes() const {
+bool ratesong::Linker::has_changes() const {
+	return (!unrated_to_rating.empty() ||
+			!rating_to_unrated.empty() ||
+			!rating_change.empty());
+}
+
+void ratesong::Linker::print_changes() const {
 	bool printed = false;
 	if (!unrated_to_rating.empty()) {
 		printed = true;
@@ -170,16 +172,14 @@ void mpdtagger::Linker::print_changes() const {
 	}
 }
 
-void mpdtagger::Linker::apply_changes() {
+bool ratesong::Linker::apply_changes() {
 	symlink::Access symlink(out_dir);
 
 	for (std::list<symlink_rating_t>::const_iterator iter
 			 = unrated_to_rating.begin();
 		 iter != unrated_to_rating.end(); iter++) {
-		try {
-			symlink.symlink_set(iter->first, iter->second);
-		} catch (const symlink::Error& err) {
-			throw LinkerError(err.what());
+		if (!symlink.symlink_set(iter->first, iter->second)) {
+			return false;
 		}
 		config::debug("SET %s: UNRATED -> %d",
 					  iter->first.first.c_str(), iter->second);
@@ -188,10 +188,8 @@ void mpdtagger::Linker::apply_changes() {
 	for (std::list<symlink_rating_t>::const_iterator iter
 			 = rating_to_unrated.begin();
 		 iter != rating_to_unrated.end(); iter++) {
-		try {
-			symlink.symlink_clear(iter->first);
-		} catch (const symlink::Error& err) {
-			throw LinkerError(err.what());
+		if (!symlink.symlink_clear(iter->first)) {
+			return false;
 		}
 		config::debug("SET %s: %d -> UNRATED",
 					  iter->first.first.c_str(), iter->second);
@@ -200,13 +198,13 @@ void mpdtagger::Linker::apply_changes() {
 	for (std::list<symlink_ratings_t>::const_iterator iter
 			 = rating_change.begin();
 		 iter != rating_change.end(); iter++) {
-		try {
-			symlink.symlink_set(iter->first, iter->second.second);
-		} catch (const symlink::Error& err) {
-			throw LinkerError(err.what());
+		if (!symlink.symlink_set(iter->first, iter->second.second)) {
+			return false;
 		}
 		config::debug("SET %s: %d -> %d",
 					  iter->first.first.c_str(),
 					  iter->second.first, iter->second.second);
 	}
+
+	return true;
 }

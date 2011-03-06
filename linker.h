@@ -1,8 +1,8 @@
-#ifndef MPDTAGGER_LINKER_H
-#define MPDTAGGER_LINKER_H
+#ifndef RATESONG_LINKER_H
+#define RATESONG_LINKER_H
 
 /*
-  mpdtagger - Synchronizes metadata between MPD stickers and media files.
+  ratesong - Synchronizes metadata between MPD stickers and media files.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -19,27 +19,21 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdexcept>
 #include <string>
 
-#include "symlinkaccess.h"
-#include "mediaaccess.h"
+#include "symlink-access.h"
+#include "media-access.h"
 
-namespace mpdtagger {
-	class LinkerError : public std::runtime_error {
-	public:
-	LinkerError(const std::string& what) :
-		std::runtime_error(what) { }
-	};
-
+namespace ratesong {
 	class Linker {
 	public:
 	Linker(const std::string& in_dir, const std::string& out_dir)
 		: in_dir(in_dir), out_dir(out_dir) { }
 
 		bool calculate_changes();
+		bool has_changes() const;
 		void print_changes() const;
-		void apply_changes();
+		bool apply_changes();
 
 	private:
 		const std::string in_dir, out_dir;

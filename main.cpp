@@ -1,5 +1,5 @@
 /*
-  mpdtagger - Synchronizes metadata between MPD stickers and media files.
+  ratesong - Synchronizes metadata between MPD stickers and media files.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -28,9 +28,9 @@
 #include "linker.h"
 #include "config.h"
 
-using mpdtagger::config::error;
-using mpdtagger::config::log;
-using mpdtagger::config::debug;
+using ratesong::config::error;
+using ratesong::config::log;
+using ratesong::config::debug;
 
 #define DEFAULT_MPD_HOST "localhost"
 #define DEFAULT_MPD_PORT 6600
@@ -44,8 +44,8 @@ namespace {
 
 void syntax(char* appname) {
 	error("MPD Tagger v%s (built %s)",
-		  mpdtagger::config::VERSION_STRING,
-		  mpdtagger::config::BUILD_DATE);
+		  ratesong::config::VERSION_STRING,
+		  ratesong::config::BUILD_DATE);
 	error("Usage: %s [options] <command> <musicdir>", appname);
 	error("Commands:");
 	error("  tompd     Store song rating metadata into MPD database.");
@@ -85,6 +85,12 @@ bool check_dir(const char* dirpath, bool check_write = false) {
 		return false;
 	}
 	return true;
+}
+
+void format_dir(std::string& dir) {
+	if (dir.length() > 0 && dir.at(dir.size()-1) != SEP) {
+		dir += SEP;
+	}
 }
 
 bool parse_config(int argc, char* argv[]) {
@@ -145,7 +151,7 @@ bool parse_config(int argc, char* argv[]) {
 			help_cmd = true;
 			return true;
 		case 'v':
-			mpdtagger::config::debug_enabled = true;
+			ratesong::config::debug_enabled = true;
 			break;
 		case 'n':
 			no_confirm = true;
@@ -196,14 +202,14 @@ bool parse_config(int argc, char* argv[]) {
 	debug("  no-confirm: %d", no_confirm);
 	debug("mpdtag opts (%s)", (tag_cmd ? "enabled" : "disabled"));
 	debug("  mpd-host: %s (port %d)", mpd_host.c_str(), mpd_port);
-	debug("move opts (%s)", (sort_cmd ? "enabled" : "disabled"));
+	debug("link opts (%s)", (sort_cmd ? "enabled" : "disabled"));
 	debug("  output-dir: %s", output_dir.c_str());
 
 	return true;
 }
 
 bool promptYN(const std::string& question) {
-	mpdtagger::config::lognn("%s (y/N): ", question.c_str());
+	ratesong::config::lognn("%s (y/N): ", question.c_str());
 	std::string response;
 	std::getline(std::cin, response);
 	return (!response.empty() &&
@@ -219,10 +225,11 @@ int main(int argc, char* argv[]) {
 		syntax(argv[0]);
 		return 0;
 	} else if (tag_cmd) {
-		mpdtagger::Tagger tagger(mpd_host, mpd_port, music_dir);
+		format_dir(music_dir);
+		ratesong::Tagger tagger(mpd_host, mpd_port, music_dir);
 		log("Calculating tags...");
-		try {
-			if (tagger.calculate_changes()) {
+		if (tagger.calculate_changes()) {
+			if (tagger.has_changes()) {
 				log("The following changes are about to be applied to your MPD database:");
 				tagger.print_changes();
 				if (no_confirm ||
@@ -234,18 +241,21 @@ int main(int argc, char* argv[]) {
 			} else {
 				log("Your MPD database is up to date.");
 			}
-		} catch (const mpdtagger::TaggerError& err) {
-			error(err.what());
+		} else {
+			log("Encountered error when calculating changes, giving up.");
 			return 1;
 		}
 	} else if (sort_cmd) {
+		format_dir(music_dir);
 		if (output_dir.length() == 0) {
-			output_dir = music_dir;//TODO append /rating
+			output_dir = music_dir+"rating"+SEP;
+		} else {
+			format_dir(output_dir);
 		}
-		mpdtagger::Linker linker(music_dir, output_dir);
+		ratesong::Linker linker(music_dir, output_dir);
 		log("Calculating symlinks...");
-		try {
-			if (linker.calculate_changes()) {
+		if (linker.calculate_changes()) {
+			if (linker.has_changes()) {
 				log("The following changes are about to be applied to your output directory:");
 				linker.print_changes();
 				if (no_confirm ||
@@ -257,8 +267,8 @@ int main(int argc, char* argv[]) {
 			} else {
 				log("Your output directory is up to date.");
 			}
-		} catch (const mpdtagger::LinkerError& err) {
-			error(err.what());
+		} else {
+			log("Encountered error when caulculating changes, giving up.");
 			return 1;
 		}
 	}

@@ -1,6 +1,3 @@
-#ifndef RATESONG_TAGGER_H
-#define RATESONG_TAGGER_H
-
 /*
   ratesong - Synchronizes metadata between MPD stickers and media files.
   Copyright (C) 2010  Nicholas Parker
@@ -19,29 +16,24 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "mpd-access.h"
-#include "media-access.h"
+#include "symlink-access.h"
 
-namespace ratesong {
-	class Tagger {
-	public:
-	Tagger(const std::string& mpd_host, size_t mpd_port,
-		   const std::string& music_dir)
-		: dir(music_dir), host(mpd_host), port(mpd_port) { }
+#include <sstream>
 
-		bool calculate_changes();
-		bool has_changes() const;
-		void print_changes() const;
-		bool apply_changes();
-
-	private:
-		const std::string dir, host;
-		const size_t port;
-
-		std::list<song_rating_t> unrated_to_rating;
-		std::list<song_rating_t> rating_to_unrated;
-		std::list<song_ratings_t> rating_change;
-	};
+bool ratesong::symlink::Access::symlinks(std::map<symlink_t, rating_t>& out_rating,
+										 std::list<symlink_t>& out_dangling) const {
+	return true;//TODO go through outdir's expected rating paths and see what symlinks are present.
+	//return 'ratings' according to what rating subdir things are in
 }
 
-#endif
+bool ratesong::symlink::Access::symlink_clear(const symlink_t& song) {
+	return true;//TODO delete symlink
+}
+
+bool ratesong::symlink::Access::symlink_set(const symlink_t& song, rating_t rating) {
+	return true;//TODO delete old symlink (if present), create new
+}
+
+bool ratesong::symlink::Access::symlink_add(const song_t& song, rating_t rating) {
+	return true;//TODO create new (based off path of song)
+}

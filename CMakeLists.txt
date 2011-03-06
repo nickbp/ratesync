@@ -1,10 +1,10 @@
 cmake_minimum_required (VERSION 2.6)
 
-project(mpdtagger)
+project(ratesong)
 
-set (mpdtagger_VERSION_MAJOR 1)
-set (mpdtagger_VERSION_MINOR 0)
-set (mpdtagger_VERSION_PATCH 0)
+set (ratesong_VERSION_MAJOR 1)
+set (ratesong_VERSION_MINOR 0)
+set (ratesong_VERSION_PATCH 0)
 
 SET(SRCS
   config.in.h
@@ -12,13 +12,13 @@ SET(SRCS
   linker.h
   linker.cpp
   main.cpp
-  mediaaccess.h
-  mediaaccess.cpp
-  mpdaccess.h
-  mpdaccess.cpp
+  media-access.h
+  media-access.cpp
+  mpd-access.h
+  mpd-access.cpp
   song.h
-  symlinkaccess.h
-  symlinkaccess.cpp
+  symlink-access.h
+  symlink-access.cpp
   tagger.h
   tagger.cpp)
 
@@ -28,16 +28,16 @@ configure_file (
   )
 include_directories("${PROJECT_BINARY_DIR}")
 
-add_executable(mpdtagger ${SRCS})
+add_executable(ratesong ${SRCS})
 
-target_link_libraries(mpdtagger
+target_link_libraries(ratesong
   tag
   mpdclient)
 
 include (InstallRequiredSystemLibraries)
-set (CPACK_RESOURCE_FILE_LICENSE  
+set (CPACK_RESOURCE_FILE_LICENSE
   "${CMAKE_CURRENT_SOURCE_DIR}/LICENCE.txt")
-set (CPACK_PACKAGE_VERSION_MAJOR "${mpdtagger_VERSION_MAJOR}")
-set (CPACK_PACKAGE_VERSION_MINOR "${mpdtagger_VERSION_MINOR}")
-set (CPACK_PACKAGE_VERSION_PATCH "${mpdtagger_VERSION_PATCH}")
+set (CPACK_PACKAGE_VERSION_MAJOR "${ratesong_VERSION_MAJOR}")
+set (CPACK_PACKAGE_VERSION_MINOR "${ratesong_VERSION_MINOR}")
+set (CPACK_PACKAGE_VERSION_PATCH "${ratesong_VERSION_PATCH}")
 include (CPack)
