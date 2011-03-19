@@ -1,5 +1,5 @@
 /*
-  ratesong - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "media-access.h"
+#include "sink-file.h"
 #include "config.h"
 
 #include <taglib/taglib.h>
@@ -67,19 +67,19 @@ namespace {
 	bool check_file(const std::string& filepath) {
 		struct stat sb;
 		if (stat(filepath.c_str(), &sb) != 0) {
-			ratesong::config::error("Unable to stat file %s: File not found or unable to get status.",
+			ratesync::config::error("Unable to stat file %s.",
 									 filepath.c_str());
 			return false;
 		}
 
 		if (access(filepath.c_str(), R_OK) != 0) {
-			ratesong::config::error("Unable to access file %s: No read access.",
+			ratesync::config::error("Unable to access file %s: No read access.",
 									 filepath.c_str());
 			return false;
 		}
 
 		if (!S_ISREG(sb.st_mode) && !S_ISLNK(sb.st_mode)) {
-			ratesong::config::error("Unable to access file %s: Not a regular file or symlink.",
+			ratesync::config::error("Unable to access file %s: Not a regular file or symlink.",
 									 filepath.c_str());
 			return false;
 		}
@@ -88,7 +88,7 @@ namespace {
 	}
 
 	bool xiph_rating(TagLib::Ogg::XiphComment* xiphcomment,
-					 ratesong::rating_t& out) {
+					 ratesync::rating_t& out) {
 		TagLib::Ogg::FieldListMap map = xiphcomment->fieldListMap();
 		for (TagLib::Ogg::FieldListMap::Iterator
 				 it = map.begin(); it != map.end(); ++it) {
@@ -105,7 +105,7 @@ namespace {
 						continue;
 					}
 					if (ogg_rating == 0.5) {//unrated
-						return false;
+						out = UNRATED;
 					} else if (ogg_rating > 0.8) {// (0.8,1.0]
 						out = 5;
 					} else if (ogg_rating > 0.6) {// (0.6,0.8]
@@ -125,7 +125,7 @@ namespace {
 	}
 
 	bool id3v2_rating(TagLib::ID3v2::Tag* id3v2tag,
-					  ratesong::rating_t& out) {
+					  ratesync::rating_t& out) {
 		const TagLib::ID3v2::FrameListMap& map = id3v2tag->frameListMap();
 		if (map.contains("POPM")) {
 			const TagLib::List<TagLib::ID3v2::Frame*>& vallist = map["POPM"];
@@ -135,7 +135,7 @@ namespace {
 					static_cast<TagLib::ID3v2::PopularimeterFrame*>(*frame);
 				int popm_rating = popmframe->rating();
 				if (popm_rating == 0) {
-					return false;
+					out = UNRATED;
 				} else if (popm_rating < 64) {
 					out = 1;
 				} else if (popm_rating < 128) {
@@ -154,7 +154,7 @@ namespace {
 	}
 
 	enum file_type_t { UNKNOWN, MP3, OGG, FLAC };
-	file_type_t get_type(const ratesong::song_t& file) {
+	file_type_t get_type(const ratesync::song_t& file) {
 		if (string_ends_with_ci(file, ".mp3")) {
 			return MP3;
 		} else if (string_ends_with_ci(file, ".ogg") ||
@@ -166,7 +166,7 @@ namespace {
 		return UNKNOWN;
 	}
 
-	bool list_dir(const std::string& root, std::list<ratesong::song_t>& songs_out) {
+	bool list_dir(const std::string& root, std::list<ratesync::song_t>& songs_out) {
 		std::queue<std::string> dirqueue;
 		dirqueue.push(root);
 
@@ -176,19 +176,19 @@ namespace {
 
 			DIR* dp = opendir(dir.c_str());
 			if (dp == NULL) {
-				ratesong::config::error("Couldn't open directory %s", dir.c_str());
+				ratesync::config::error("Couldn't open directory %s", dir.c_str());
 				return false;
 			}
 
 			struct dirent* ep;
 			while (ep = readdir(dp)) {
 				//"This is the only field you can count on in all POSIX systems":
-				ratesong::song_t filepath = dir+ep->d_name;
-				ratesong::config::debug(filepath.c_str());
+				ratesync::song_t filepath = dir+ep->d_name;
+				ratesync::config::debug(filepath.c_str());
 
 				struct stat sb;
 				if (stat(filepath.c_str(), &sb) != 0) {
-					ratesong::config::error("Unable to stat file %s.",
+					ratesync::config::error("Unable to stat file %s.",
 											filepath.c_str());
 					closedir(dp);
 					return false;
@@ -207,8 +207,8 @@ namespace {
 		return true;
 	}
 
-	bool rating(const ratesong::song_t& song, file_type_t type,
-				ratesong::rating_t& out) {
+	bool rating(const ratesync::song_t& song, file_type_t type,
+				ratesync::rating_t& out) {
 		switch (type) {
 		case MP3:
 			{
@@ -249,36 +249,29 @@ namespace {
 			}
 			break;
 		case UNKNOWN:
-			ratesong::config::error("INTERNAL ERROR: queried rating against UNKNOWN type");
+			ratesync::config::error("INTERNAL ERROR: queried rating against UNKNOWN type");
 			break;
 		default:
-			ratesong::config::error("UNKNOWN ENUM: %d", type);
+			ratesync::config::error("UNKNOWN ENUM: %d", type);
 			break;
 		}
-
 		return false;
 	}
 }
 
-bool ratesong::media::Access::ratings(std::map<song_t,rating_t>& out_ratings,
-									  std::set<song_t>& out_unrated) {
+bool ratesync::sink::File::Get(std::map<song_t,rating_t>& out_ratings) {
 	std::list<song_t> songs;
 	if (!list_dir(music_dir, songs)) {
 		return false;
 	}
-	return ratings(songs, out_ratings, out_unrated);
-}
 
-bool ratesong::media::Access::ratings(const std::list<song_t>& songs,
-									  std::map<song_t,rating_t>& out_ratings,
-									  std::set<song_t>& out_unrated) {
 	bool ret = true;
-
 	for (std::list<song_t>::const_iterator
 			 it = songs.begin(); it != songs.end(); it++) {
 		song_t songpath(music_dir + *it);
 		if (!check_file(songpath)) {
 			ret = false;
+			continue;
 		}
 
 		file_type_t type = get_type(songpath);
@@ -288,14 +281,23 @@ bool ratesong::media::Access::ratings(const std::list<song_t>& songs,
 		}
 
 		rating_t r;
-		if (rating(songpath, type, r)) {
-			config::debug("RATING %s = %d", it->c_str(), r);
-			out_ratings.insert(std::make_pair(*it,r));
-		} else {
-			config::debug("RATING %s = UNRATED", it->c_str(), r);
-			out_unrated.insert(*it);
+		if (!rating(songpath, type, r)) {
+			ret = false;
+			continue;
 		}
-	}
 
+		config::debug("RATING %s = %d", it->c_str(), r);
+		out_ratings.insert(std::make_pair(*it,r));
+	}
 	return ret;
+}
+
+bool ratesync::sink::File::Set(const song_ratings_t& song) {
+	//TODO write new rating to file
+	return false;
+}
+
+bool ratesync::sink::File::Clear(const song_rating_t& song) {
+	//TODO clear ratings from file
+	return false;
 }

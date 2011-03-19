@@ -1,8 +1,8 @@
-#ifndef RATESONG_LINKER_H
-#define RATESONG_LINKER_H
+#ifndef RATESYNC_LINKER_H
+#define RATESYNC_LINKER_H
 
 /*
-  ratesong - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@
 #include "symlink-access.h"
 #include "media-access.h"
 
-namespace ratesong {
+namespace ratesync {
 	class Linker {
 	public:
 	Linker(const std::string& in_dir, const std::string& out_dir)
@@ -38,9 +38,8 @@ namespace ratesong {
 	private:
 		const std::string in_dir, out_dir;
 
-		std::list<symlink_rating_t> unrated_to_rating;
-		std::list<symlink_rating_t> rating_to_unrated;
-		std::list<symlink_ratings_t> rating_change;
+		std::list<song_ratings_t> rating_change;
+		std::list<song_rating_t> rating_add, rating_del;
 	};
 }
 

@@ -1,8 +1,8 @@
-#ifndef RATESONG_MEDIA_ACCESS_H
-#define RATESONG_MEDIA_ACCESS_H
+#ifndef RATESYNC_SINK_H
+#define RATESYNC_SINK_H
 
 /*
-  ratesong - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -19,29 +19,16 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <string>
-#include <list>
 #include <map>
-#include <set>
-
 #include "song.h"
 
-namespace ratesong {
-	namespace media {
-		class Access {
-		public:
-			Access(const std::string& music_dir)
-				: music_dir(music_dir) { }
-
-			bool ratings(std::map<song_t,rating_t>& out_rating,
-						 std::set<song_t>& out_unrated);
-			bool ratings(const std::list<song_t>& songs,
-						 std::map<song_t,rating_t>& out_rating,
-						 std::set<song_t>& out_unrated);
-		private:
-			const std::string music_dir;
-		};
-	}
+namespace ratesync {
+	class ISink {
+	public:
+		virtual bool Get(std::map<song_t,rating_t>& out_rating) = 0;
+		virtual bool Set(const song_ratings_t& song) = 0;
+		virtual bool Clear(const song_rating_t& song) = 0;
+	};
 }
 
 #endif

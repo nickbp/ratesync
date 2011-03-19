@@ -1,8 +1,8 @@
-#ifndef RATESONG_TAGGER_H
-#define RATESONG_TAGGER_H
+#ifndef RATESYNC_UPDATER_H
+#define RATESYNC_UPDATER_H
 
 /*
-  ratesong - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -19,28 +19,23 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "mpd-access.h"
-#include "media-access.h"
+#include <list>
 
-namespace ratesong {
-	class Tagger {
+#include "sink.h"
+
+namespace ratesync {
+	class Updater {
 	public:
-	Tagger(const std::string& mpd_host, size_t mpd_port,
-		   const std::string& music_dir)
-		: dir(music_dir), host(mpd_host), port(mpd_port) { }
+	Updater(ISink* src, ISink* dest) : src(src), dest(dest) { }
 
-		bool calculate_changes();
-		bool has_changes() const;
-		void print_changes() const;
-		bool apply_changes();
+		bool Calculate();
+		bool HasChanges() const;
+		void Print() const;
+		bool Apply();
 
 	private:
-		const std::string dir, host;
-		const size_t port;
-
-		std::list<song_rating_t> unrated_to_rating;
-		std::list<song_rating_t> rating_to_unrated;
-		std::list<song_ratings_t> rating_change;
+		ISink *src, *dest;
+		std::list<song_ratings_t> dest_rating_change;
 	};
 }
 

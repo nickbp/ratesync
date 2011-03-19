@@ -1,5 +1,5 @@
 /*
-  ratesong - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-namespace ratesong {
+namespace ratesync {
 	namespace config {
 		bool debug_enabled = false;
 

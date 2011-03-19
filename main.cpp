@@ -1,5 +1,5 @@
 /*
-  ratesong - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -24,43 +24,48 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include "tagger.h"
-#include "linker.h"
+#include "updater.h"
+
+#include "sink-file.h"
+#include "sink-mpd.h"
+#include "sink-symlink.h"
+
 #include "config.h"
 
-using ratesong::config::error;
-using ratesong::config::log;
-using ratesong::config::debug;
+using ratesync::config::error;
+using ratesync::config::log;
+using ratesync::config::debug;
 
 #define DEFAULT_MPD_HOST "localhost"
 #define DEFAULT_MPD_PORT 6600
 
 namespace {
-	bool help_cmd = false, sort_cmd = false, tag_cmd = false,
-		no_confirm = false;
-	std::string mpd_host = DEFAULT_MPD_HOST, music_dir, output_dir;
+	enum CMD { UNKNOWN, HELP, SYMLINK, MPD };
+	CMD run_cmd = UNKNOWN;
+	bool no_confirm = false;
+	std::string mpd_host = DEFAULT_MPD_HOST, music_dir, symlink_dir;
 	size_t mpd_port = DEFAULT_MPD_PORT;
 }
 
 void syntax(char* appname) {
-	error("MPD Tagger v%s (built %s)",
-		  ratesong::config::VERSION_STRING,
-		  ratesong::config::BUILD_DATE);
+	error("ratesync v%s (built %s)",
+		  ratesync::config::VERSION_STRING,
+		  ratesync::config::BUILD_DATE);
 	error("Usage: %s [options] <command> <musicdir>", appname);
 	error("Commands:");
-	error("  tompd     Store song rating metadata into MPD database.");
-	error("  linksort  Create symlinks to files, grouped according to their ratings.");
+	error("  mpd     Store song rating metadata into MPD database.");
+	error("  links   Create symlinks to files, grouped according to their ratings.");
 	error("");
 	error("Common Options:");
 	error("  -h/--help        This help text.");
 	error("  -v/--verbose     Show verbose output.");
 	error("  -n/--no-confirm  Don't confirm changes before applying them.");
 	error("");
-	error("tompd Command Options:");
+	error("mpd Command Options:");
 	error("  -m/--mpd-host <host[:port]>  MPD host/port. (default %s:%d)",
 		  DEFAULT_MPD_HOST, DEFAULT_MPD_PORT);
 	error("");
-	error("linksort Command Options:");
+	error("links Command Options:");
 	error("  -o/--output-dir <path>  Where to put sorted files/symlinks.");
 	error("                          (default: <musicdir>/rating)");
 }
@@ -121,11 +126,11 @@ bool parse_config(int argc, char* argv[]) {
 			for (int i = optind; i < argc; ++i) {
 				const char* arg = argv[i];
 				debug("%d %d %s", argc, i, arg);
-				if (!tag_cmd && !sort_cmd) {
-					if (strcmp(arg, "tompd") == 0) {
-						tag_cmd = true;
-					} else if (strcmp(arg, "linksort") == 0) {
-						sort_cmd = true;
+				if (run_cmd == UNKNOWN) {
+					if (strcmp(arg, "mpd") == 0) {
+						run_cmd = MPD;
+					} else if (strcmp(arg, "links") == 0) {
+						run_cmd = SYMLINK;
 					} else {
 						error("%s: unknown argument: '%s'", argv[0], argv[i]);
 						syntax(argv[0]);
@@ -148,10 +153,10 @@ bool parse_config(int argc, char* argv[]) {
 
 		switch (c) {
 		case 'h':
-			help_cmd = true;
+			run_cmd = HELP;
 			return true;
 		case 'v':
-			ratesong::config::debug_enabled = true;
+			ratesync::config::debug_enabled = true;
 			break;
 		case 'n':
 			no_confirm = true;
@@ -178,7 +183,7 @@ bool parse_config(int argc, char* argv[]) {
 			if (!check_dir(optarg, true)) {
 				return false;
 			}
-			output_dir = std::string(optarg);
+			symlink_dir = std::string(optarg);
 			break;
 		default:
 			syntax(argv[0]);
@@ -186,30 +191,26 @@ bool parse_config(int argc, char* argv[]) {
 		}
 	}
 
-	if (!tag_cmd && !sort_cmd) {
-		error("%s: no command specified", argv[0]);
-		syntax(argv[0]);
-		return false;
-	}
 	if (music_dir.length() == 0) {
 		error("%s: no music directory specified", argv[0]);
 		syntax(argv[0]);
 		return false;
 	}
+	format_dir(music_dir);
 
 	debug("common opts:");
 	debug("  music-dir: %s", music_dir.c_str());
 	debug("  no-confirm: %d", no_confirm);
-	debug("mpdtag opts (%s)", (tag_cmd ? "enabled" : "disabled"));
+	debug("mpdtag opts (%s)", (run_cmd == MPD ? "enabled" : "disabled"));
 	debug("  mpd-host: %s (port %d)", mpd_host.c_str(), mpd_port);
-	debug("link opts (%s)", (sort_cmd ? "enabled" : "disabled"));
-	debug("  output-dir: %s", output_dir.c_str());
+	debug("link opts (%s)", (run_cmd == SYMLINK ? "enabled" : "disabled"));
+	debug("  symlink-dir: %s", symlink_dir.c_str());
 
 	return true;
 }
 
 bool promptYN(const std::string& question) {
-	ratesong::config::lognn("%s (y/N): ", question.c_str());
+	ratesync::config::lognn("%s (y/N): ", question.c_str());
 	std::string response;
 	std::getline(std::cin, response);
 	return (!response.empty() &&
@@ -221,56 +222,66 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	if (help_cmd) {
+	std::string dest_label;
+	ratesync::ISink *in_ptr = NULL, *out_ptr = NULL;
+	switch (run_cmd) {
+	case HELP:
 		syntax(argv[0]);
 		return 0;
-	} else if (tag_cmd) {
-		format_dir(music_dir);
-		ratesong::Tagger tagger(mpd_host, mpd_port, music_dir);
-		log("Calculating tags...");
-		if (tagger.calculate_changes()) {
-			if (tagger.has_changes()) {
-				log("The following changes are about to be applied to your MPD database:");
-				tagger.print_changes();
-				if (no_confirm ||
-					promptYN("Continue with these changes to your MPD database?")) {
+	case MPD:
+		dest_label = "MPD database";
+		in_ptr = new ratesync::sink::File(music_dir);
+		out_ptr = new ratesync::sink::Mpd(mpd_host, mpd_port);
+		break;
+	case SYMLINK:
+		dest_label = "symlink directory";
+		in_ptr = new ratesync::sink::File(music_dir);
+
+		if (symlink_dir.length() == 0) {
+			symlink_dir = symlink_dir+"rating"+SEP;
+		} else {
+			format_dir(symlink_dir);
+		}
+		out_ptr = new ratesync::sink::Symlink(music_dir, symlink_dir);
+		break;
+	default:
+		error("%s: no command specified", argv[0]);
+		syntax(argv[0]);
+		return 1;
+	}
+
+	int ret = 0;
+	{
+		ratesync::Updater updater(in_ptr, out_ptr);
+		log("Calculating changes...");
+		if (updater.Calculate()) {
+			if (updater.HasChanges()) {
+				log("The following changes are about to be applied to your %s:",
+					dest_label.c_str());
+				updater.Print();
+				std::ostringstream txt;
+				txt << "Continue with these changes to your " << dest_label << "?";
+				if (no_confirm || promptYN(txt.str())) {
 					log("Applying changes...");
-					tagger.apply_changes();
+					updater.Apply();
 					log("Complete.");
 				}
 			} else {
-				log("Your MPD database is up to date.");
+				log("Your %s is up to date.", dest_label.c_str());
 			}
 		} else {
 			log("Encountered error when calculating changes, giving up.");
-			return 1;
-		}
-	} else if (sort_cmd) {
-		format_dir(music_dir);
-		if (output_dir.length() == 0) {
-			output_dir = music_dir+"rating"+SEP;
-		} else {
-			format_dir(output_dir);
-		}
-		ratesong::Linker linker(music_dir, output_dir);
-		log("Calculating symlinks...");
-		if (linker.calculate_changes()) {
-			if (linker.has_changes()) {
-				log("The following changes are about to be applied to your output directory:");
-				linker.print_changes();
-				if (no_confirm ||
-					promptYN("Continue with these changes to your output directory?")) {
-					log("Applying changes...");
-					linker.apply_changes();
-					log("Complete.");
-				}
-			} else {
-				log("Your output directory is up to date.");
-			}
-		} else {
-			log("Encountered error when caulculating changes, giving up.");
-			return 1;
+			ret = 1;
 		}
 	}
-	return 0;
+	if (in_ptr != NULL) {
+		delete in_ptr;
+		in_ptr = NULL;
+	}
+	if (out_ptr != NULL) {
+		delete out_ptr;
+		out_ptr = NULL;
+	}
+
+	return ret;
 }

@@ -1,8 +1,8 @@
-#ifndef RATESONG_SYMLINK_ACCESS_H
-#define RATESONG_SYMLINK_ACCESS_H
+#ifndef RATESYNC_SINK_MPD_H
+#define RATESYNC_SINK_MPD_H
 
 /*
-  ratesong - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -19,29 +19,27 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <string>
-#include <list>
-#include <map>
-#include <set>
+#include "sink.h"
 
-#include "song.h"
+struct mpd_connection;
 
-namespace ratesong {
-	namespace symlink {
-		class Access {
+namespace ratesync {
+	namespace sink {
+		class Mpd : public ISink {
 		public:
-			Access(const std::string& symlink_dir)
-				: symlink_dir(symlink_dir) { }
+			Mpd(const std::string& host, size_t port);
+			virtual ~Mpd();
 
-			bool symlinks(std::map<symlink_t, rating_t>& out_rating,
-						  std::list<symlink_t>& out_dangling) const;
-
-			bool symlink_clear(const symlink_t& song);
-			bool symlink_set(const symlink_t& song, rating_t rating);
-			bool symlink_add(const song_t& song, rating_t rating);
+			bool Get(std::map<song_t,rating_t>& out_rating);
+			bool Set(const song_ratings_t& song);
+			bool Clear(const song_rating_t& song);
 
 		private:
-			const std::string symlink_dir;
+			Mpd(const Mpd& sink);//disallow copy
+
+			const std::string host;
+			const size_t port;
+			struct mpd_connection* conn;
 		};
 	}
 }

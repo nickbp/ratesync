@@ -1,8 +1,8 @@
-#ifndef MPDTAGGER_MEDIAACCESS_H
-#define MPDTAGGER_MEDIAACCESS_H
+#ifndef RATESYNC_SINK_FILE_H
+#define RATESYNC_SINK_FILE_H
 
 /*
-  mpdtagger - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -19,32 +19,19 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdexcept>
-#include <string>
-#include <list>
-#include <map>
-#include <set>
+#include "sink.h"
 
-#include "song.h"
-
-namespace mpdtagger {
-	namespace media {
-		class Error : public std::runtime_error {
+namespace ratesync {
+	namespace sink {
+		class File : public ISink {
 		public:
-		Error(const std::string& what) :
-			std::runtime_error(what) { }
-		};
+		File(const std::string& music_dir) : music_dir(music_dir) { }
+			virtual ~File() { }
 
-		class Access {
-		public:
-			Access(const std::string& music_dir)
-				: music_dir(music_dir) { }
+			bool Get(std::map<song_t,rating_t>& out_ratings);
+			bool Set(const song_ratings_t& song);
+			bool Clear(const song_rating_t& song);
 
-			void ratings(std::map<song_t,rating_t>& out_rating,
-						 std::set<song_t>& out_unrated);
-			void ratings(const std::list<song_t>& songs,
-						 std::map<song_t,rating_t>& out_rating,
-						 std::set<song_t>& out_unrated);
 		private:
 			const std::string music_dir;
 		};

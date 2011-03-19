@@ -4,13 +4,13 @@ $ sudo apt-get install build-essential cmake libmpdclient-dev libtag1-dev
 
 Example initial build (after prerequisites are installed):
 
-ratesong$ mkdir src out
-ratesong$ mv * .git src
+ratesync$ mkdir src out
+ratesync$ mv * .git src
 (you should now have two subdirectories: src/ and out/)
-ratesong$ cd out
-ratesong/out$ cmake ../src
+ratesync$ cd out
+ratesync/out$ cmake ../src
 (this generates makefiles -- cmake may also be used for configuring build parameters (optional))
-ratesong/out$ make
-ratesong/out$ ./ratesong -h
+ratesync/out$ make
+ratesync/out$ ./ratesync -h
 
 All set!

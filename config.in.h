@@ -1,8 +1,8 @@
-#ifndef RATESONG_CONFIG_H
-#define RATESONG_CONFIG_H
+#ifndef RATESYNC_CONFIG_H
+#define RATESYNC_CONFIG_H
 
 /*
-  ratesong - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -19,14 +19,14 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-namespace ratesong {
+namespace ratesync {
 	namespace config {
 		static const int
-			VERSION_MAJOR = @ratesong_VERSION_MAJOR@,
-			VERSION_MINOR = @ratesong_VERSION_MINOR@,
-			VERSION_PATCH = @ratesong_VERSION_PATCH@;
+			VERSION_MAJOR = @ratesync_VERSION_MAJOR@,
+			VERSION_MINOR = @ratesync_VERSION_MINOR@,
+			VERSION_PATCH = @ratesync_VERSION_PATCH@;
 
-		static const char* VERSION_STRING = "@ratesong_VERSION_MAJOR@.@ratesong_VERSION_MINOR@.@ratesong_VERSION_PATCH@";
+		static const char* VERSION_STRING = "@ratesync_VERSION_MAJOR@.@ratesync_VERSION_MINOR@.@ratesync_VERSION_PATCH@";
 		static const char* BUILD_DATE = __TIMESTAMP__;
 
 		extern bool debug_enabled;

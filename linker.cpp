@@ -1,5 +1,5 @@
 /*
-  ratesong - Synchronizes metadata between MPD stickers and media files.
+  ratesync - Manages songs according their rating metadata.
   Copyright (C) 2010  Nicholas Parker
 
   This program is free software: you can redistribute it and/or modify
@@ -23,11 +23,11 @@
 #include <iostream>
 
 namespace {
-	using ratesong::song_t;
-	using ratesong::rating_t;
+	using ratesync::song_t;
+	using ratesync::rating_t;
 
-	using ratesong::song_rating_t;
-	using ratesong::song_ratings_t;
+	using ratesync::song_rating_t;
+	using ratesync::song_ratings_t;
 
 	void get_changes(const std::list<song_t>& mpd_songs,
 					 const std::map<song_t, rating_t>& mpd_ratings,
@@ -50,45 +50,50 @@ namespace {
 					rating_t mpd_rating = mpd_rating_iter->second;
 					if (mpd_rating != file_rating) {
 						//update mpd rating
-						rating_change.push_back(song_ratings_t(song,
-															   std::make_pair(mpd_rating,
-																			  file_rating)));
+						rating_change.push_back(song_ratings_t());
+						song_ratings_t& srs = rating_change.back();
+						srs.path = song;
+						srs.rating_old = mpd_rating;
+						srs.rating_new = file_rating;
 					}
 				} else {
 					//set mpd rating
-					unrated_to_rating.push_back(song_rating_t(song,
-															  file_rating));
+					unrated_to_rating.push_back(song_rating_t());
+					song_rating_t& sr = unrated_to_rating.back();
+					sr.path = song;
+					sr.rating = file_rating;
 				}
 			} else if (file_unrated.find(song) != file_unrated.end()) {
 				//file is unrated (or rating couldnt be parsed)
 				if (mpd_rating_iter != mpd_ratings.end()) {
 					rating_t mpd_rating = mpd_rating_iter->second;
 					//clear mpd rating
-					rating_to_unrated.push_back(song_rating_t(song,
-															  mpd_rating));
+					rating_to_unrated.push_back(song_rating_t());
+					song_rating_t& sr = rating_to_unrated.back();
+					sr.path = song;
+					sr.rating = mpd_rating;
 				}
 			}
 		}
 	}
 }
 
-bool ratesong::Linker::calculate_changes() {
+bool ratesync::Linker::calculate_changes() {
 	//get all symlinks and their ratings:
-	std::map<symlink_t, rating_t> symlink_ratings;
-	std::list<symlink_t> symlink_dangling;
+	std::map<song_t,rating_t> symlink_ratings;
+	std::list<symlink::symlink_t> symlink_dangling;
 	{
-		symlink::Access symlink(out_dir);
+		symlink::Access symlink(in_dir, out_dir);
 		if (!symlink.symlinks(symlink_ratings, symlink_dangling)) {
 			return false;
 		}
 	}
 
 	//get local file metadata ratings for everything in the directory:
-	std::map<song_t, rating_t> file_ratings;
-	std::set<song_t> file_unrated;
+	std::map<song_t,rating_t> file_ratings;
 	{
 		media::Access media(in_dir);
-		if (!media.ratings(file_ratings, file_unrated)) {
+		if (!media.ratings(file_ratings)) {
 			return false;
 		}
 	}
@@ -105,42 +110,53 @@ bool ratesong::Linker::calculate_changes() {
 	return true;
 }
 
-bool ratesong::Linker::has_changes() const {
-	return (!unrated_to_rating.empty() ||
-			!rating_to_unrated.empty() ||
-			!rating_change.empty());
+bool ratesync::Linker::has_changes() const {
+	return (!rating_change.empty() ||
+			!rating_add.empty() || !rating_del.empty());
 }
 
-void ratesong::Linker::print_changes() const {
+namespace {
+	inline std::string str(rating_t rating) {
+		std::ostringstream oss;
+		if (rating == UNRATED) {
+			oss << "unrated";
+		} else {
+			oss << rating;
+		}
+		return oss.str();
+	}
+}
+
+void ratesync::Linker::print_changes() const {
 	bool printed = false;
-	if (!unrated_to_rating.empty()) {
+	if (!rating_add.empty()) {
 		printed = true;
-		config::log("%d files unlinked in output directory, rated on disk",
-					unrated_to_rating.size());
+		config::log("%d new files unlinked in output directory",
+					rating_add.size());
 		int i = 0;
-		for (std::list<symlink_rating_t>::const_iterator iter
-				 = unrated_to_rating.begin();
-			 iter != unrated_to_rating.end(); iter++) {
-			config::log("  %d/%d %s: unrated -> %d",
-						i++, unrated_to_rating.size(),
-						iter->first.first.c_str(), iter->second);
+		for (std::list<song_rating_t>::const_iterator iter
+				 = rating_add.begin();
+			 iter != rating_add.end(); iter++) {
+			config::log("  %d/%d %s: %d",
+						i++, rating_add.size(),
+						iter->path.c_str(), str(iter->rating).c_str());
 		}
 	}
 
-	if (!rating_to_unrated.empty()) {
+	if (!rating_del.empty()) {
 		if (printed) {
 			config::log("");
 		}
 		printed = true;
-		config::log("%d files linked in output directory, unrated on disk",
-					rating_to_unrated.size());
+		config::log("%d stale files linked in output directory",
+					rating_del.size());
 		int i = 0;
-		for (std::list<symlink_rating_t>::const_iterator iter
-				 = rating_to_unrated.begin();
-			 iter != rating_to_unrated.end(); iter++) {
-			config::log("  %d/%d %s: %d -> unrated",
-						i++, rating_to_unrated.size(),
-						iter->first.first.c_str(), iter->second);
+		for (std::list<song_rating_t>::const_iterator iter
+				 = rating_del.begin();
+			 iter != rating_del.end(); iter++) {
+			config::log("  %d/%d %s: %d",
+						i++, rating_del.size(),
+						iter->path.c_str(), str(iter->rating).c_str());
 		}
 	}
 
@@ -152,13 +168,14 @@ void ratesong::Linker::print_changes() const {
 		config::log("%d files linked in output directory, rated differently on disk",
 					rating_change.size());
 		int i = 0;
-		for (std::list<symlink_ratings_t>::const_iterator iter
+		for (std::list<song_ratings_t>::const_iterator iter
 				 = rating_change.begin();
 			 iter != rating_change.end(); iter++) {
-			config::log("  %d/%d %s: %d -> %d",
+			config::log("  %d/%d %s: %s -> %s",
 						i++, rating_change.size(),
-						iter->first.first.c_str(),
-						iter->second.first, iter->second.second);
+						iter->path.c_str(),
+						str(iter->rating_old).c_str(),
+						str(iter->rating_new).c_str());
 		}
 	}
 
@@ -167,43 +184,41 @@ void ratesong::Linker::print_changes() const {
 	} else {
 		config::log("");
 		config::log("%d total changes to be made in output directory.",
-					unrated_to_rating.size() + rating_to_unrated.size() +
-					rating_change.size());
+					rating_add.size() + rating_del.size() + rating_change.size());
 	}
 }
 
-bool ratesong::Linker::apply_changes() {
-	symlink::Access symlink(out_dir);
+bool ratesync::Linker::apply_changes() {
+	symlink::Access symlink(in_dir, out_dir);
 
-	for (std::list<symlink_rating_t>::const_iterator iter
-			 = unrated_to_rating.begin();
-		 iter != unrated_to_rating.end(); iter++) {
-		if (!symlink.symlink_set(iter->first, iter->second)) {
+	for (std::list<song_rating_t>::const_iterator iter
+			 = rating_add.begin(); iter != rating_add.end(); iter++) {
+		if (!symlink.symlink_add(*iter)) {
 			return false;
 		}
-		config::debug("SET %s: UNRATED -> %d",
-					  iter->first.first.c_str(), iter->second);
+		config::debug("ADD %s: %s", iter->path.c_str(),
+					  str(iter->rating).c_str());
 	}
 
-	for (std::list<symlink_rating_t>::const_iterator iter
-			 = rating_to_unrated.begin();
-		 iter != rating_to_unrated.end(); iter++) {
-		if (!symlink.symlink_clear(iter->first)) {
+	for (std::list<song_rating_t>::const_iterator iter
+			 = rating_del.begin(); iter != rating_del.end(); iter++) {
+		if (!symlink.symlink_clear(*iter)) {
 			return false;
 		}
-		config::debug("SET %s: %d -> UNRATED",
-					  iter->first.first.c_str(), iter->second);
+		config::debug("DEL %s: %s", iter->path.c_str(),
+					  str(iter->rating).c_str());
 	}
 
-	for (std::list<symlink_ratings_t>::const_iterator iter
+	for (std::list<song_ratings_t>::const_iterator iter
 			 = rating_change.begin();
 		 iter != rating_change.end(); iter++) {
-		if (!symlink.symlink_set(iter->first, iter->second.second)) {
+		if (!symlink.symlink_update(*iter)) {
 			return false;
 		}
-		config::debug("SET %s: %d -> %d",
-					  iter->first.first.c_str(),
-					  iter->second.first, iter->second.second);
+		config::debug("UPDATE %s: %s -> %s",
+					  iter->path.c_str(),
+					  str(iter->rating_old).c_str(),
+					  str(iter->rating_new).c_str());
 	}
 
 	return true;
