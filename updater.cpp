@@ -61,8 +61,6 @@ bool ratesync::Updater::Calculate() {
 		return false;
 	}
 
-	//get list of mpd files whose ratings differ from file_ratings:
-	//(ignore files not present in mpd)
 	get_changes(src_ratings, dest_ratings, dest_rating_change);
 
 	return true;

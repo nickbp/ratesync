@@ -238,7 +238,7 @@ int main(int argc, char* argv[]) {
 		in_ptr = new ratesync::sink::File(music_dir);
 
 		if (symlink_dir.length() == 0) {
-			symlink_dir = symlink_dir+"rating"+SEP;
+			symlink_dir = music_dir+"rating"+SEP;
 		} else {
 			format_dir(symlink_dir);
 		}
