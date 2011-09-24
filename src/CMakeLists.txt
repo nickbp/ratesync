@@ -35,7 +35,7 @@ target_link_libraries(ratesync
 
 include (InstallRequiredSystemLibraries)
 set (CPACK_RESOURCE_FILE_LICENSE
-  "${CMAKE_CURRENT_SOURCE_DIR}/LICENCE.txt")
+  "${CMAKE_CURRENT_SOURCE_DIR}/../LICENCE")
 set (CPACK_PACKAGE_VERSION_MAJOR "${ratesync_VERSION_MAJOR}")
 set (CPACK_PACKAGE_VERSION_MINOR "${ratesync_VERSION_MINOR}")
 set (CPACK_PACKAGE_VERSION_PATCH "${ratesync_VERSION_PATCH}")
