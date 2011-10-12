@@ -24,27 +24,40 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "config.h" //must come early, defines USE_MPDCLIENT
 #include "updater.h"
 
 #include "sink-file.h"
-#include "sink-mpd.h"
 #include "sink-symlink.h"
-
-#include "config.h"
+#ifdef USE_MPDCLIENT
+#include "sink-mpd.h"
+#endif
 
 using ratesync::config::error;
 using ratesync::config::log;
 using ratesync::config::debug;
 
+#ifdef USE_MPDCLIENT
 #define DEFAULT_MPD_HOST "localhost"
 #define DEFAULT_MPD_PORT 6600
+#endif
 
 namespace {
-	enum CMD { UNKNOWN, HELP, SYMLINK, MPD };
+	enum CMD {
+		UNKNOWN
+		, HELP
+		, SYMLINK
+#ifdef USE_MPDCLIENT
+		, MPD
+#endif
+	};
 	CMD run_cmd = UNKNOWN;
 	bool no_confirm = false;
-	std::string mpd_host = DEFAULT_MPD_HOST, music_dir, symlink_dir;
+	std::string music_dir, symlink_dir;
+#ifdef USE_MPDCLIENT
+	std::string mpd_host = DEFAULT_MPD_HOST;
 	size_t mpd_port = DEFAULT_MPD_PORT;
+#endif
 }
 
 void syntax(char* appname) {
@@ -53,7 +66,9 @@ void syntax(char* appname) {
 		  ratesync::config::BUILD_DATE);
 	error("Usage: %s [options] <command> <musicdir>", appname);
 	error("Commands:");
+#ifdef USE_MPDCLIENT
 	error("  mpd     Store song rating metadata into MPD database.");
+#endif
 	error("  links   Create symlinks to files, grouped according to their ratings.");
 	error("");
 	error("Common Options:");
@@ -61,10 +76,12 @@ void syntax(char* appname) {
 	error("  -v/--verbose     Show verbose output.");
 	error("  -n/--no-confirm  Don't confirm changes before applying them.");
 	error("");
+#ifdef USE_MPDCLIENT
 	error("mpd Command Options:");
 	error("  -m/--mpd-host <host[:port]>  MPD host/port. (default %s:%d)",
 		  DEFAULT_MPD_HOST, DEFAULT_MPD_PORT);
 	error("");
+#endif
 	error("links Command Options:");
 	error("  -o/--output-dir <path>  Where to put sorted files/symlinks.");
 	error("                          (default: <musicdir>/rating)");
@@ -109,7 +126,9 @@ bool parse_config(int argc, char* argv[]) {
 			{"help", 0, NULL, 'h'},
 			{"verbose", 0, NULL, 'v'},
 			{"no-confirm", 0, NULL, 'n'},
+#ifdef USE_MPDCLIENT
 			{"mpd-host", 1, NULL, 'm'},
+#endif
 			{"output-dir", 1, NULL, 'o'},
 			{0,0,0,0}
 		};
@@ -127,9 +146,12 @@ bool parse_config(int argc, char* argv[]) {
 				const char* arg = argv[i];
 				debug("%d %d %s", argc, i, arg);
 				if (run_cmd == UNKNOWN) {
+#ifdef USE_MPDCLIENT
 					if (strcmp(arg, "mpd") == 0) {
 						run_cmd = MPD;
-					} else if (strcmp(arg, "links") == 0) {
+					} else
+#endif
+					if (strcmp(arg, "links") == 0) {
 						run_cmd = SYMLINK;
 					} else {
 						error("%s: unknown argument: '%s'", argv[0], argv[i]);
@@ -161,6 +183,7 @@ bool parse_config(int argc, char* argv[]) {
 		case 'n':
 			no_confirm = true;
 			break;
+#ifdef USE_MPDCLIENT
 		case 'm':
 			{
 				std::string host_port(optarg);
@@ -179,6 +202,7 @@ bool parse_config(int argc, char* argv[]) {
 				}
 			}
 			break;
+#endif
 		case 'o':
 			if (!check_dir(optarg, true)) {
 				return false;
@@ -201,8 +225,10 @@ bool parse_config(int argc, char* argv[]) {
 	debug("common opts:");
 	debug("  music-dir: %s", music_dir.c_str());
 	debug("  no-confirm: %d", no_confirm);
+#ifdef USE_MPDCLIENT
 	debug("mpdtag opts (%s)", (run_cmd == MPD ? "enabled" : "disabled"));
 	debug("  mpd-host: %s (port %d)", mpd_host.c_str(), mpd_port);
+#endif
 	debug("link opts (%s)", (run_cmd == SYMLINK ? "enabled" : "disabled"));
 	debug("  symlink-dir: %s", symlink_dir.c_str());
 
@@ -228,11 +254,13 @@ int main(int argc, char* argv[]) {
 	case HELP:
 		syntax(argv[0]);
 		return 0;
+#ifdef USE_MPDCLIENT
 	case MPD:
 		dest_label = "MPD database";
 		in_ptr = new ratesync::sink::File(music_dir);
 		out_ptr = new ratesync::sink::Mpd(mpd_host, mpd_port);
 		break;
+#endif
 	case SYMLINK:
 		dest_label = "symlink directory";
 		in_ptr = new ratesync::sink::File(music_dir);

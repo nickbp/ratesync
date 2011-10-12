@@ -19,6 +19,8 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#cmakedefine USE_MPDCLIENT
+
 namespace ratesync {
 	namespace config {
 		static const int
@@ -26,7 +28,11 @@ namespace ratesync {
 			VERSION_MINOR = @ratesync_VERSION_MINOR@,
 			VERSION_PATCH = @ratesync_VERSION_PATCH@;
 
-		static const char* VERSION_STRING = "@ratesync_VERSION_MAJOR@.@ratesync_VERSION_MINOR@.@ratesync_VERSION_PATCH@";
+#ifdef USE_MPDCLIENT
+		static const char* VERSION_STRING = "@ratesync_VERSION_MAJOR@.@ratesync_VERSION_MINOR@.@ratesync_VERSION_PATCH@-mpd";
+#else
+		static const char* VERSION_STRING = "@ratesync_VERSION_MAJOR@.@ratesync_VERSION_MINOR@.@ratesync_VERSION_PATCH@-nompd";
+#endif
 		static const char* BUILD_DATE = __TIMESTAMP__;
 
 		extern bool debug_enabled;
